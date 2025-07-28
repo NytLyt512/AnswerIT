@@ -170,46 +170,10 @@ const models = [
 		provider: "gemini"
 	},
 	{
-		name: "gpt-4o",
-		displayName: "GPT-4o",
-		subtitle: "OpenAI | Advanced Reasoning & Multimodal",
-		order: 5,
-		color: "#D6EFFF", // Soft Sky Blue
-		tooltip: "OpenAI's GPT-4o multimodal model: high-quality reasoning, supports text and image inputs, balanced speed and cost.",
-		provider: "openai"
-	},
-	{
-		name: "o4-mini-2025-04-16",
-		displayName: "o4 Mini",
-		subtitle: "OpenAI | Cost-Effective Reasoning",
-		order: 6,
-		color: "#E3F2FD", // Very Light Blue
-		tooltip: "GPT-o4 Mini: Reasoning model capable of handling complex questions with a 128k context window. Optimized for cost and speed, ideal for straightforward reasoning tasks.",
-		provider: "openai"
-	},
-	{
-		name: "claude-3-7-sonnet",
-		displayName: "Sonnet 3.7",
-		subtitle: "Claude | Efficient Generalist",
-		order: 7,
-		color: "#FFF6E0", // Very Pale Yellow
-		tooltip: "Anthropic's Claude Sonnet 3.7: robust generalist model with strong reasoning and coding performance. Faster and more cost-effective than Sonnet 4.0.",
-		provider: "anthropic"
-	},
-	{
-		name: "claude-sonnet-4-0",
-		displayName: "Sonnet 4",
-		subtitle: "Claude | Premium Code & Analysis",
-		order: 8,
-		color: "#FFF9D6", // Soft Butter Yellow
-		tooltip: "Anthropic's Claude Sonnet 4.0: top-tier for complex code generation, deep analysis, and very long contexts. High reliability and safety.",
-		provider: "anthropic"
-	},
-	{
 		name: "llama-3.3-70b-versatile",
 		displayName: "Llama 3.3",
 		subtitle: "Meta | 30 RPM | Code Generation and Problem Solving",
-		order: 9,
+		order: 5,
 		color: "#F0E5FF", // Soft Lavender
 		tooltip: "Llama-3.3-70B-Versatile is Meta's advanced multilingual large language model, optimized for a wide range of natural language processing tasks. With 70 billion parameters, it offers high performance across various benchmarks while maintaining efficiency suitable for diverse applications.",
 		provider: "groq"
@@ -218,7 +182,7 @@ const models = [
 		name: "meta-llama/llama-4-maverick-17b-128e-instruct",
 		displayName: "Llama 4",
 		subtitle: "Meta | 30 RPM | Next-Gen Reasoning & Coding",
-		order: 10,
+		order: 6,
 		color: "#E8E6FF", // Soft Periwinkle
 		tooltip: "Meta's Llama 4 Maverick 17B: Next-generation Llama model with improved reasoning, code generation, and multilingual support. 128k context window, strong performance on academic and coding tasks. Faster and more efficient than Llama 3, competitive with GPT-4o and Claude Sonnet 4 for most practical use cases.",
 		provider: "groq"
@@ -227,7 +191,7 @@ const models = [
 		name: "qwen/qwen3-32b",
 		displayName: "Qwen3-32B",
 		subtitle: "Alibaba-CLoud | 60 RPM | Multilingual Reasoning",
-		order: 11,
+		order: 7,
 		color: "#FFE5F0", // Soft Pink
 		tooltip: "Qwen3-32B-Instruct: Alibaba's advanced multilingual LLM, strong at reasoning, code, and academic tasks. 32B parameters, competitive with GPT-4-class models.",
 		provider: "groq"
@@ -236,10 +200,46 @@ const models = [
 		name: "moonshotai/kimi-k2-instruct",
 		displayName: "Kimi K2",
 		subtitle: "Moonshot AI | 60 RPM | Complex Reasoning",
-		order: 12,
+		order: 8,
 		color: "#E5F7FF", // Soft Blue
 		tooltip: "MoonshotAI Kimi K2: 128k context, strong reasoning, multilingual support. Great for long and complex questions.",
 		provider: "groq"
+	},
+	{
+		name: "gpt-4o",
+		displayName: "GPT-4o",
+		subtitle: "OpenAI | Advanced Reasoning & Multimodal",
+		order: 9,
+		color: "#D6EFFF", // Soft Sky Blue
+		tooltip: "OpenAI's GPT-4o multimodal model: high-quality reasoning, supports text and image inputs, balanced speed and cost.",
+		provider: "openai"
+	},
+	{
+		name: "o4-mini-2025-04-16",
+		displayName: "o4 Mini",
+		subtitle: "OpenAI | Cost-Effective Reasoning",
+		order: 10,
+		color: "#E3F2FD", // Very Light Blue
+		tooltip: "GPT-o4 Mini: Reasoning model capable of handling complex questions with a 128k context window. Optimized for cost and speed, ideal for straightforward reasoning tasks.",
+		provider: "openai"
+	},
+	{
+		name: "claude-3-7-sonnet",
+		displayName: "Sonnet 3.7",
+		subtitle: "Claude | Efficient Generalist",
+		order: 11,
+		color: "#FFF6E0", // Very Pale Yellow
+		tooltip: "Anthropic's Claude Sonnet 3.7: robust generalist model with strong reasoning and coding performance. Faster and more cost-effective than Sonnet 4.0.",
+		provider: "anthropic"
+	},
+	{
+		name: "claude-sonnet-4-0",
+		displayName: "Sonnet 4",
+		subtitle: "Claude | Premium Code & Analysis",
+		order: 12,
+		color: "#FFF9D6", // Soft Butter Yellow
+		tooltip: "Anthropic's Claude Sonnet 4.0: top-tier for complex code generation, deep analysis, and very long contexts. High reliability and safety.",
+		provider: "anthropic"
 	},
 ].sort((a, b) => a.order - b.order); // Sort by order (1 = first)
 
@@ -708,7 +708,7 @@ function createPopupUI() {
 		<div id="ait-popup-header" style="position: relative;">
 			<span style="display: flex; gap: 4px">
 				<h3 id="ait-popup-title">AnswerIT!!</h3>
-				<kbd style="font-size: 12px; opacity: 0.5;">v${GM_info.script.version}</kbd>
+				<a id="ait-popup-version" href="https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!" target="_blank">v${GM_info.script.version}</a>
 			</span>
 			<div id="ait-popup-controls">
 				<button id="ait-opacity-toggle" title="Adjust opacity" data-action="controls.toggleOpacity">◐</button>
@@ -1017,27 +1017,47 @@ function createPopupUI() {
 	window.addEventListener('resize', popup.updatePosition);
 
 	// --- Populate models grid dynamically ---
-	models.forEach((model) => {
-		const btn = Object.assign(document.createElement('button'), {innerHTML: `
-			<button class="ait-model-button" data-model="${model.name}" title="${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
-				<div class="ait-model-text-container">
-					<span class="ait-model-name">${model.displayName}</span>
-					<span class="ait-model-subtitle">${model.subtitle}</span>
-				</div>
-				<div class="ait-model-status-container">
-					<span class="ait-model-progress">⠋</span>
-					<div class="ait-model-status-icon" title="Retry generation (ignore cache)" style="display: none;">
-						<span class="ait-model-success-icon">✔</span>
-						<span class="ait-model-retry-icon">↺</span>
-					</div>
-				</div>
-			</button>
-		`}).firstElementChild;
-		btn.onclick = () => handleGenerateAnswer(model.name);
-		btn.querySelector('.ait-model-status-icon').onclick = (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true) };
+	const modelsByProvider = models.reduce((acc, model) => {
+		if (!acc[model.provider]) acc[model.provider] = [];
+		acc[model.provider].push(model);
+		return acc;
+	}, {});
 
-		popup.modelBtn[model.name] = btn;
-		popup.querySelector("#ait-models-grid").appendChild(btn);
+	const capitalizeWords = (str) => str.replace(/\b\w+/g, word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+	
+	Object.entries(modelsByProvider).forEach(([provider, providerModels]) => {
+		const providerSection = document.createElement('div');
+		providerSection.className = 'ait-provider-section';
+		providerSection.innerHTML = `
+			<div class="ait-provider-header">${capitalizeWords(provider)}</div>
+			<div class="ait-provider-models"></div>
+		`;
+		
+		const modelsContainer = providerSection.querySelector('.ait-provider-models');
+		providerModels.forEach((model) => {
+			const btn = Object.assign(document.createElement('button'), {innerHTML: `
+				<button class="ait-model-button" data-model="${model.name}" title="${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
+					<span class="ait-model-name">${model.displayName}</span>
+					<div class="ait-model-status-container">
+						<span class="ait-model-progress">⠋</span>
+						<div class="ait-model-status-icon">
+							<span class="ait-model-success-icon">✔</span>
+							<span class="ait-model-retry-icon">↺</span>
+						</div>
+					</div>
+				</button>
+			`}).firstElementChild;
+			btn.onclick = () => handleGenerateAnswer(model.name);
+			btn.querySelector('.ait-model-status-icon').onclick = (e) => {
+				e.stopPropagation();
+				handleGenerateAnswer(model.name, true);
+			};
+
+			popup.modelBtn[model.name] = btn;
+			modelsContainer.appendChild(btn);
+		});
+		
+		popup.querySelector("#ait-models-grid").appendChild(providerSection);
 	});
 
 	// --- Events ---
@@ -1460,6 +1480,16 @@ GM_addStyle(`
 		color: var(--color-text);
 	}
 
+	#ait-popup-version {
+		opacity: 0.5;
+		font-size: 12px;
+		color: var(--color-footer);
+		font-family: monospace;
+	}
+	#ait-popup-version:hover {
+		text-decoration: underline;
+	}
+
 	#ait-popup-controls {
 		display: flex;
 		align-items: center;
@@ -1516,130 +1546,141 @@ GM_addStyle(`
 		gap: 10px;
 	}
 
+	/* Provider-grouped compact layout */
 	#ait-models-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 10px;
+		gap: 8px;
 		transition: all 0.3s ease;
 	}
 
+	.ait-provider-section {
+		margin-bottom: 4px;
+	}
+
+	.ait-provider-header {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--color-subtitle);
+		margin-bottom: 4px;
+		padding: 2px 6px;
+		background: var(--bg-header);
+		border-radius: 4px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.ait-provider-models {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+		gap: 6px;
+	}
+
 	.ait-model-button {
-		width: 100%;
-		text-align: left;
-		border-radius: 6px;
+		background: var(--bg-main);
 		border: 1px solid var(--border-color);
-		padding: 10px 12px;
+		border-radius: 6px;
+		padding: 8px 10px;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		margin-bottom: 8px;
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
 		box-shadow: var(--shadow-button);
-		position: relative; /* Needed for absolute positioning of icons */
-		justify-content: space-between; /* Push icon container to the right */
+		position: relative;
+		min-height: 36px;
+		text-align: left;
 	}
 
 	.ait-model-button:hover {
-		transform: translateY(-2px);
+		transform: translateY(-1px);
 		box-shadow: var(--shadow-button-hover);
-	}
-
-	.ait-model-text-container {
-		display: flex;
-		flex-direction: column;
-		width: 100%;
 	}
 
 	.ait-model-name {
 		font-weight: 500;
-		font-size: 14px;
-		color: var(--color-text);
-	}
-
-	.ait-model-subtitle {
-		height: 0;
-		overflow: hidden;
 		font-size: 12px;
-		color: var(--color-subtitle);
-		transition: height 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
-		opacity: 0;
-		margin-top: 0;
-	}
-
-	.ait-model-button:hover .ait-model-subtitle {
-		height: auto;
-		opacity: 1;
-		margin-top: 4px;
-	}
-
-	.ait-model-button.loading {
-		cursor: progress;
-		opacity: 0.7;
-	}
-
-	.ait-model-button.success .ait-model-status-icon {
-		display: flex; /* Show the status container */
+		color: var(--color-text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		flex: 1;
 	}
 
 	.ait-model-status-container {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 24px; /* Fixed width for alignment */
-		height: 24px;
-		margin-left: 10px; /* Space between text and icon */
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
 	}
 
 	.ait-model-progress {
-		display: none; /* Hidden by default */
-		width: 18px;
-		height: 18px;
-		border: 2px solid var(--spinner-color);
-		border-top-color: transparent;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
+		font-size: 14px;
+		color: var(--spinner-color);
+		animation: spin 2s linear infinite;
+		display: none;
+	}
+
+	.ait-model-button.loading {
+		cursor: progress;
+		opacity: 0.8;
 	}
 
 	.ait-model-button.loading .ait-model-progress {
-		display: block; /* Show spinner when loading */
+		display: block;
 	}
 
 	.ait-model-status-icon {
-		display: none; /* Hidden by default, shown on success */
-		cursor: pointer;
-		position: relative; /* For hover effect positioning */
-		width: 20px;
-		height: 20px;
+		display: none;
 		align-items: center;
 		justify-content: center;
-	}
-
-	.ait-model-success-icon,
-	.ait-model-retry-icon {
-		position: absolute;
-		top: 0;
-		left: 0;
 		width: 100%;
 		height: 100%;
-		transition: opacity 0.2s ease;
+		border-radius: 50%;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.ait-model-button.success .ait-model-status-icon {
+		display: flex;
+	}
+
+	.ait-model-status-icon:hover {
+		background-color: rgba(255, 255, 255, 0.2);
 	}
 
 	.ait-model-success-icon {
-		opacity: 1;
 		color: var(--success-color);
-		font-size: 20px; /* Adjust size as needed */
-		line-height: 1;
+		font-size: 12px;
+		font-weight: bold;
 	}
 
 	.ait-model-retry-icon {
-		opacity: 0;
 		color: var(--retry-color);
-		font-size: 18px; /* Adjust size as needed */
-		line-height: 1;
+		font-size: 12px;
+		font-weight: bold;
+		display: none;
 	}
 
-	.ait-model-status-icon:hover .ait-model-success-icon { opacity: 0; }
-	.ait-model-status-icon:hover .ait-model-retry-icon { opacity: 1; }
+	.ait-model-status-icon:hover .ait-model-success-icon {
+		display: none;
+	}
+
+	.ait-model-status-icon:hover .ait-model-retry-icon {
+		display: inline;
+	}
+
+	.ait-model-button.success {
+		border-color: var(--success-color);
+		background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%);
+	}
+
+	.ait-model-button.error {
+		border-color: #f44336;
+		background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%);
+	}
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
