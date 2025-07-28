@@ -50,7 +50,7 @@ if (GM_info.script.version > GM_getValue('script_version', '0')) {
  * -----------------------------------
  */
 const config = {
-	/** @type {{ gemini: string, openai: string, anthropic: string }} */
+	/** @type {{ gemini: string, openai: string, anthropic: string, groq: string }} */
 	apiKeys: GM_getValue("apiKeys", {}),	// can add multiple by separating with commas
 	
 	/** @type {{ key: string, modifier: string }} */
@@ -205,6 +205,42 @@ const models = [
 		tooltip: "Anthropic's Claude Sonnet 4.0: top-tier for complex code generation, deep analysis, and very long contexts. High reliability and safety.",
 		provider: "anthropic"
 	},
+	{
+		name: "llama-3.3-70b-versatile",
+		displayName: "Llama 3.3",
+		subtitle: "Meta | 30 RPM | Code Generation and Problem Solving",
+		order: 9,
+		color: "#F0E5FF", // Soft Lavender
+		tooltip: "Llama-3.3-70B-Versatile is Meta's advanced multilingual large language model, optimized for a wide range of natural language processing tasks. With 70 billion parameters, it offers high performance across various benchmarks while maintaining efficiency suitable for diverse applications.",
+		provider: "groq"
+	},
+	{
+		name: "meta-llama/llama-4-maverick-17b-128e-instruct",
+		displayName: "Llama 4",
+		subtitle: "Meta | 30 RPM | Next-Gen Reasoning & Coding",
+		order: 10,
+		color: "#E8E6FF", // Soft Periwinkle
+		tooltip: "Meta's Llama 4 Maverick 17B: Next-generation Llama model with improved reasoning, code generation, and multilingual support. 128k context window, strong performance on academic and coding tasks. Faster and more efficient than Llama 3, competitive with GPT-4o and Claude Sonnet 4 for most practical use cases.",
+		provider: "groq"
+	},
+	{
+		name: "qwen/qwen3-32b",
+		displayName: "Qwen3-32B",
+		subtitle: "Alibaba-CLoud | 60 RPM | Multilingual Reasoning",
+		order: 11,
+		color: "#FFE5F0", // Soft Pink
+		tooltip: "Qwen3-32B-Instruct: Alibaba's advanced multilingual LLM, strong at reasoning, code, and academic tasks. 32B parameters, competitive with GPT-4-class models.",
+		provider: "groq"
+	},
+	{
+		name: "moonshotai/kimi-k2-instruct",
+		displayName: "Kimi K2",
+		subtitle: "Moonshot AI | 60 RPM | Complex Reasoning",
+		order: 12,
+		color: "#E5F7FF", // Soft Blue
+		tooltip: "MoonshotAI Kimi K2: 128k context, strong reasoning, multilingual support. Great for long and complex questions.",
+		provider: "groq"
+	},
 ].sort((a, b) => a.order - b.order); // Sort by order (1 = first)
 
 
@@ -284,17 +320,15 @@ const isScriptPage = {
 const AIProviders = {
 	SYSTEM_INSTRUCTION: "You are an expert assistant helping with academic questions and coding problems. Analyze the provided content carefully and provide the most accurate answer.\nNote that the content can sometimes contain html that was directly extracted from the exam page so account that into consideration.\n\nContent Analysis:\n- If this is a multiple choice question, identify all options and select the correct one\n- If this is a coding question, provide complete, working, error-free code in the desired language\n- If this contains current code in the editor, build upon or fix that code as needed\n- If this is a theoretical or puzzle-like question, provide clear reasoning and explanation\n\nResponse Format:\n- For multiple choice: Provide reasoning, then clearly state \"Answer: [number] - [option text]\"\n- For coding: Provide the complete solution with brief explanation without any comments exactly in the format \"The Complete Code is:\n```[language]\n[Code]```\"\n- For other questions: Give concise but thorough explanations, then clearly state \"Short Answer: []\"\n- Format text clearly for textarea display (no markdown)\n- If the question is unclear or missing context, ask for specific clarification\n\nAlways prioritize accuracy over speed. Think through the problem step-by-step before providing your final answer.",
 
-	ContentParser: async (questionItem, formatImage) => {
+	async ContentParser(questionItem, formatImage) {
 		let contentParts = [], html = questionItem, lastIndex = 0;
 		const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
-
 		let match;
 		while ((match = imgRegex.exec(html)) !== null) {
 			const beforeWithImg = html.slice(lastIndex, imgRegex.lastIndex);
 			if (beforeWithImg.trim()) contentParts.push({ text: beforeWithImg });
-			
-			const src = match[1];
 			try {
+				const src = match[1];
 				let imageData;
 				if (src.startsWith('data:')) {
 					const [mime, data] = src.split(',');
@@ -311,185 +345,151 @@ const AIProviders = {
 									canvas.toBlob(resolve, 'image/png');
 								};
 								img.src = URL.createObjectURL(b);
-							})
-							: b
+							}) : b
 					);
 					const data = await blob.arrayBuffer().then(buf => btoa(String.fromCharCode(...new Uint8Array(buf))));
 					imageData = { mimeType: blob.type || 'image/jpeg', data, url: src };
 				}
 				contentParts.push(formatImage(imageData));
-			} catch (error) {
-				contentParts.push({ text: `[Image at ${src} could not be loaded]` });
-			}
-			
+			} catch { contentParts.push({ text: `[Image at ${match[1]} could not be loaded]` }); }
 			lastIndex = imgRegex.lastIndex;
 		}
-		
 		if (lastIndex < html.length) {
 			const after = html.slice(lastIndex);
 			if (after.trim()) contentParts.push({ text: after });
 		}
-		
 		return contentParts.length ? contentParts : [{ text: questionItem }];
+	},
+
+	_BaseProvider: {
+		async streamRequest(url, headers, data, onProgress, extractContent, isDone) {
+			return new Promise((resolve, reject) => {
+				let answerText = "", processedLength = 0;
+				GM_xmlhttpRequest({
+					method: "POST", url, headers, data: JSON.stringify(data),
+					onprogress: (r) => {
+						if (r.responseText?.length > processedLength) {
+							r.responseText.slice(processedLength).split('\n').forEach(line => {
+								if (line.startsWith('data: ') && !isDone?.(line)) {
+									try {
+										const content = extractContent(JSON.parse(line.slice(6)));
+										if (content) { answerText += content; onProgress(answerText); }
+									} catch {}
+								} else if (isDone?.(line)) return resolve(answerText);
+							});
+							processedLength = r.responseText.length;
+						}
+					},
+					onload: (r) => r.status === 200 && answerText ? resolve(answerText) : reject(new Error(`No content received: Status ${r.status}\nResponse: ${r.responseText}`)),
+					onerror: (r) => {
+						let msg = `API error: ${r.status} ${r.statusText}`;
+						try {
+							const body = JSON.parse(r.responseText);
+							msg += ` - ${body?.error?.message || JSON.stringify(body)}`;
+						} catch {}
+						reject(new Error(msg));
+					}
+				});
+			});
+		},
+		
+		handleError(provider, response) {
+			if (response.status === 401 || response.status === 400) {
+				delete config.apiKeys[provider];
+				GM_setValue("apiKeys", config.apiKeys);
+				return `API Key Error: Invalid ${provider} API key.`;
+			}
+			return null;
+		}
 	},
 
 	gemini: {
 		async call(model, questionItem, apiKey, onProgress) {
 			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ inline_data: { mime_type: img.mimeType, data: img.data } }));
-			return new Promise((resolve, reject) => {
-				let answerText = "", processedLength = 0;
-				
-				GM_xmlhttpRequest({
-					method: "POST",
-					url: `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${apiKey}&alt=sse`,
-					headers: { "Content-Type": "application/json" },
-					data: JSON.stringify({
-						system_instruction: { parts: { text: AIProviders.SYSTEM_INSTRUCTION } },
-						contents: [{ parts: contentParts }],
-						generationConfig: model?.generationConfig || {}
-					}),
-					onprogress: (r) => {
-						if (r.responseText?.length > processedLength) {
-							r.responseText.slice(processedLength).split('\n').forEach(line => {
-								if (line.startsWith('data: ')) {
-									const newText = JSON.parse(line.slice(6)).candidates?.[0]?.content?.parts?.[0]?.text;
-									if (newText) {
-										answerText += newText;
-										onProgress(answerText);
-									}
-								}
-							});
-							processedLength = r.responseText.length;
-						}
-					},
-					onload: (r) => {
-						if (r.status === 200 && !answerText) r.responseText.split('\n').forEach(l => { if (l.startsWith('data: ')) { const newText = JSON.parse(l.slice(6)).candidates?.[0]?.content?.parts?.[0]?.text; if (newText) answerText += newText; } });
-						(r.status === 200 && answerText) ? resolve(answerText) : reject(new Error(`No content received: Status ${r.status}\nResponse: ${r.responseText}`));
-					},
-					onerror: (response) => {
-						let errorMsg = `API error: ${response.status} ${response.statusText}`;
-						try {
-							const errorBody = JSON.parse(response.responseText);
-							errorMsg += ` - ${errorBody?.error?.message || JSON.stringify(errorBody)}`;
-							if (response.status === 400 && errorBody?.error?.message.includes("API key not valid")) {
-								delete config.apiKeys.gemini;
-								GM_setValue("apiKeys", config.apiKeys);
-								errorMsg = "API Key Error: Key rejected. Please provide a valid API key.";
-							}
-						} catch (e) { /* Ignore JSON parsing error */ }
-						reject(new Error(errorMsg));
-					}
-				});
-			});
+			try {
+				return await AIProviders._BaseProvider.streamRequest(
+					`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${apiKey}&alt=sse`,
+					{ "Content-Type": "application/json" },
+					{ system_instruction: { parts: { text: AIProviders.SYSTEM_INSTRUCTION } }, contents: [{ parts: contentParts }], generationConfig: model?.generationConfig || {} },
+					onProgress,
+					(data) => data.candidates?.[0]?.content?.parts?.[0]?.text
+				);
+			} catch (error) {
+				if (error.message.includes("API key not valid")) {
+					delete config.apiKeys.gemini;
+					GM_setValue("apiKeys", config.apiKeys);
+					throw new Error("API Key Error: Key rejected. Please provide a valid API key.");
+				}
+				throw error;
+			}
 		}
 	},
 
 	openai: {
 		async call(model, questionItem, apiKey, onProgress) {
 			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
-			return new Promise((resolve, reject) => {
-				let answerText = "", processedLength = 0;
-				
-				GM_xmlhttpRequest({
-					method: "POST",
-					url: "https://api.openai.com/v1/chat/completions",
-					headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					data: JSON.stringify({
-						model: model.name,
-						messages: [
-							{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION },
-							{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }
-						],
-						stream: true
-					}),
-					onprogress: (r) => {
-						if (r.responseText?.length > processedLength) {
-							r.responseText.slice(processedLength).split('\n').forEach(line => {
-								if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-									try{
-										const t = JSON.parse(line.slice(6)).choices?.[0]?.delta?.content;
-										if (t) { answerText += t; onProgress(answerText); }
-									} catch (e) {}
-								} else if (line.includes("[DONE]")) {
-									processedLength = r.responseText.length;
-									return resolve(answerText);
-								}
-							});
-							processedLength = r.responseText.length;
-						}
-					},
-					onload: (r) => {
-						if (r.status === 200 && !answerText) r.responseText.split('\n').forEach(line => { if (line.startsWith('data: ') && !line.includes('[DONE]')) try {if (JSON.parse(line.slice(6)).choices?.[0]?.delta?.content) { answerText += JSON.parse(line.slice(6)).choices?.[0]?.delta?.content; }} catch (e) {} });
-						if (r.status === 200 && answerText) resolve(answerText);
-						else reject(new Error(`No content received: Status ${r.status}\nResponse: ${r.responseText}`));
-					},
-					onerror: (r) => {
-						let msg = `API error: ${r.status} ${r.statusText}`;
-						try {
-							const body = JSON.parse(r.responseText);
-							msg += ` - ${body?.error?.message || JSON.stringify(body)}`;
-							if (r.status === 401) {
-								delete config.apiKeys.openai;
-								GM_setValue("apiKeys", config.apiKeys);
-								msg = "API Key Error: Invalid OpenAI API key.";
-							}
-						} catch {}
-						reject(new Error(msg));
-					}
-				});
-			});
+			try {
+				return await AIProviders._BaseProvider.streamRequest(
+					"https://api.openai.com/v1/chat/completions",
+					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					onProgress,
+					(data) => data.choices?.[0]?.delta?.content,
+					(line) => line.includes("[DONE]")
+				);
+			} catch (error) {
+				if (error.message.includes("401") || error.message.includes("Invalid")) {
+					delete config.apiKeys.openai;
+					GM_setValue("apiKeys", config.apiKeys);
+					throw new Error("API Key Error: Invalid OpenAI API key.");
+				}
+				throw error;
+			}
+		}
+	},
+
+	groq: {
+		async call(model, questionItem, apiKey, onProgress) {
+			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+			try {
+				return await AIProviders._BaseProvider.streamRequest(
+					"https://api.groq.com/openai/v1/chat/completions",
+					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					onProgress,
+					(data) => data.choices?.[0]?.delta?.content,
+					(line) => line.includes("[DONE]")
+				);
+			} catch (error) {
+				if (error.message.includes("401") || error.message.includes("Invalid")) {
+					delete config.apiKeys.groq;
+					GM_setValue("apiKeys", config.apiKeys);
+					throw new Error("API Key Error: Invalid Groq API key.");
+				}
+				throw error;
+			}
 		}
 	},
 
 	anthropic: {
 		async call(model, questionItem, apiKey, onProgress) {
 			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image", source: { type: img.url.startsWith('http') ? "url" : "base64", ...(img.url.startsWith('http') ? { url: img.url } : { media_type: img.mimeType, data: img.data }) } }));
-			return new Promise((resolve, reject) => {
-				let answerText = "", processedLength = 0;
-				
-				GM_xmlhttpRequest({
-					method: "POST",
-					url: "https://api.anthropic.com/v1/messages",
-					headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-					data: JSON.stringify({
-						model: model.name,
-						system: AIProviders.SYSTEM_INSTRUCTION,
-						messages: [{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }],
-						max_tokens: 4096,
-						stream: true
-					}),
-					onprogress: (response) => {
-						if (response.responseText?.length > processedLength) {
-							response.responseText.slice(processedLength).split('\n').forEach(line => {
-								if (line.startsWith('data: ')) {
-									try {
-										const data = JSON.parse(line.slice(6));
-										if (data.type === 'content_block_delta' && data.delta?.text) {
-											answerText += data.delta.text;
-											onProgress(answerText);
-										}
-									} catch (e) {}
-								}
-							});
-							processedLength = response.responseText.length;
-						}
-					},
-					onload: (response) => (response.status === 200 && answerText) ? resolve(answerText) : reject(new Error(`No content received: Status ${response.status}\nResponse: ${response.responseText}`)),
-					onerror: (response) => {
-						let errorMsg = `API error: ${response.status} ${response.statusText}`;
-						try {
-							const errorBody = JSON.parse(response.responseText);
-							errorMsg += ` - ${errorBody?.error?.message || JSON.stringify(errorBody)}`;
-							if (response.status === 401) {
-								delete config.apiKeys.anthropic;
-								GM_setValue("apiKeys", config.apiKeys);
-								errorMsg = "API Key Error: Invalid Anthropic API key.";
-							}
-						} catch (e) { /* Ignore JSON parsing error */ }
-						reject(new Error(errorMsg));
-					}
-				});
-			});
+			try {
+				return await AIProviders._BaseProvider.streamRequest(
+					"https://api.anthropic.com/v1/messages",
+					{ "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+					{ model: model.name, system: AIProviders.SYSTEM_INSTRUCTION, messages: [{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], max_tokens: 4096, stream: true },
+					onProgress,
+					(data) => data.type === 'content_block_delta' && data.delta?.text
+				);
+			} catch (error) {
+				if (error.message.includes("401")) {
+					delete config.apiKeys.anthropic;
+					GM_setValue("apiKeys", config.apiKeys);
+					throw new Error("API Key Error: Invalid Anthropic API key.");
+				}
+				throw error;
+			}
 		}
 	}
 };
