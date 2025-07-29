@@ -499,7 +499,14 @@ const AIState = {
 	/** @type {{ [key: string]: { answer: string, status: 'idle'|'generating'|'error', metadata: string, lastUsedModel: string | null, models: { [key: string]: { answer: string, status: string, metadata: string, startTime: number | null } } } } }} */
 	questions: {}, // { qnId: { answer, status, metadata, lastUsedModel, models: { modelName: { answer, status, metadata, startTime } } } }
 	currentQnId: null,
-	
+
+	// Reset all generated answers from memory
+	clearCache() {
+		this.questions = {};
+		this.updateUI();
+		alert("Cache cleared from memory.");
+	},
+
 	// Get or create question state
 	getQuestion(qnId) {
 		if (!this.questions[qnId]) {
@@ -1293,12 +1300,6 @@ function changeApiKey() {
 	}
 }
 
-function clearCache() {
-	AIState.questions = {};
-	AIState.updateUI();
-	alert("Cache cleared from memory.");
-}
-
 function changeHotkey() {
 	const newHotkey = prompt("Enter a new hotkey (single character) to use with Alt:", config.hotkey.key);
 	if (newHotkey && newHotkey.length === 1) {
@@ -1318,7 +1319,7 @@ function changeHotkey() {
 // --- Register Menu Commands ---
 GM_registerMenuCommand("Toggle AI Popup (Alt+" + config.hotkey.key.toUpperCase() + ")", () => popup.toggleUi());
 GM_registerMenuCommand("Change API Key", changeApiKey);
-GM_registerMenuCommand("Clear Response Cache", clearCache);
+GM_registerMenuCommand("Clear Response Cache", () => AIState.clearCache());
 GM_registerMenuCommand("Change Hotkey", changeHotkey);
 GM_registerMenuCommand("Reset Popup State", () => popup.resetState());
 GM_registerMenuCommand("🪟 Open Setup Page", () => window.open("https://NytLyt512.github.io/Userscripts/AnswerIT!!/configure.html", "_blank"));
