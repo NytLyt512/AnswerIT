@@ -16,20 +16,12 @@ const reflector = {
     hotkey: { key: 'r', ctrl: false, shift: false, alt: true }
 };
 
-// exponential backoff with max delay and promise support
-const backoff = (fn, delay = 1000, max = 300000) => {
-    const next = Math.min(delay * 1.5, max);
-    return new Promise(resolve => {
-        setTimeout(() => resolve(fn(next)), delay);
-    });
-};
-
 const host = {
     /**@type {RTCPeerConnection} */
     pc: null,
     /**@type {RTCDataChannel} */
     channel: null,
-    broadcastTimer: null,
+    _broadcastTimer: null,
 
     async setStatus(text, color) {
         if (text !== 'pending') console.log(`Reflector status: ${text}`);
@@ -41,13 +33,13 @@ const host = {
             statusElm.style.cssText = `position:fixed;bottom:8px;right:8px;background:rgba(0,0,0,0.05);padding:3px 6px;border-radius:8px;font:9px monospace;z-index:10010;opacity:0.6;transition:all 0.5s;`;
             document.body.appendChild(statusElm);
         }
-        statusElm.onmouseenter = () => { statusElm.style.width = 'auto'; statusElm.textContent = text.toUpperCase(); }
-        statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.textContent = text[0].toUpperCase(); }
+        statusElm.onmouseenter = () => { statusElm.style.width = 'auto'; statusElm.style.opacity = '0.8'; statusElm.textContent = text.toUpperCase(); }
+        statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.style.opacity = '0.3'; statusElm.textContent = text[0].toUpperCase(); }
         statusElm.textContent = text[0].toUpperCase();
         statusElm.style.color = color;
         statusElm.title = `Reflector: ${text}`;
         statusElm.style.opacity = '0.8';
-        setTimeout(() => statusElm.style.opacity = '0.5', 1000);
+        setTimeout(() => statusElm.style.opacity = '0', 1000);
     },
 
     signal: {
@@ -64,8 +56,8 @@ const host = {
                 if (data.ice) data.ice.forEach(ice => host.pc.addIceCandidate(ice.candidate));
                 return true;
             }
-            if (host.pc?.signalingState === 'have-local-offer' && delay < 300000)
-                return backoff(() => this.pollAnswer(), delay);
+            if (host.pc?.signalingState === 'have-local-offer' && delay < 3*60*1000) // 3 min max
+                return new Promise(resolve => setTimeout(() => resolve(this.pollAnswer(Math.min(delay * 1.5, 3*60*1000))), delay));
             return false;
         }
     },
@@ -79,22 +71,14 @@ const host = {
         this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.iptel.org' }] });
         this.channel = this.pc.createDataChannel('broadcast');
         this.channel.onopen = () => { this.setStatus('connected'); this.broadcast(); };
-        this.channel.onclose = () => { this.setStatus('disconnected'); backoff(() => this.init(), 5000); };
-        
+        this.channel.onclose = () => { this.setStatus('disconnected'); setTimeout(() => this.init(), 5000); };
+
+        this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] });
         this.pc.createOffer()
             .then(offer => this.pc.setLocalDescription(offer))
             .then(() => this.signal.send({ type: 'offer', sdp: this.pc.localDescription.sdp }))
             .then(() => { this.setStatus('polling answer', '#fa0'); this.signal.pollAnswer() })
 
-        let batch = []; // Batch ICE candidates to avoid spamming
-        this.pc.onicecandidate = e => {
-            if (e.candidate) {
-                batch.push(e.candidate);
-                clearTimeout(this._iceTimer);
-                this._iceTimer = setTimeout(() => this.signal.send({ type: 'ice', candidates: batch }).then(() => batch = []), 400);
-            }
-        };
-        
         this.keydownHandler = document.addEventListener('keydown', e => {
             const k = reflector.hotkey;
             if (e.key.toLowerCase() === k.key && e.ctrlKey === !!k.ctrl && e.shiftKey === !!k.shift && e.altKey === !!k.alt) {
@@ -106,9 +90,9 @@ const host = {
     },
 
     broadcast() {
-        if (this.broadcastTimer) return; // Prevent duplicates
+        if (this._broadcastTimer) return; // Prevent duplicates
 
-        this.broadcastTimer = setInterval(() => {
+        this._broadcastTimer = setInterval(() => {
             if (this.channel?.bufferedAmount > 128 * 1024) {    // clients are probably not available
                 this.setStatus('⚠ buffer warning', '#ff0');
                 this._initTimer = setTimeout(() => this.init(), 2000);    // reconnect after 2 seconds
@@ -128,16 +112,9 @@ const host = {
     },
 
     async cleanup() {
-        clearInterval(this.broadcastTimer);
+        clearInterval(this._broadcastTimer);
         clearTimeout(this._initTimer);
-        clearTimeout(this._iceTimer);
-        if (this.pc) {
-            // this.pc.close();
-            // Give time for cleanup before nulling
-            await new Promise(resolve => setTimeout(resolve, 300));
-        }
-        this.broadcastTimer = null;
-        this.pc = null;
+        this.pc?.close();
         this.channel = null;
         document.removeEventListener('keydown', this.keydownHandler);
     }

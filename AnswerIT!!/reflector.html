@@ -104,7 +104,9 @@
         function addLog(message) {
             const logContent = document.getElementById('logContent');
             const timestamp = new Date().toLocaleTimeString();
-            logContent.innerHTML += `<br>[${timestamp}] ${message}`;
+            const div = document.createElement('div');
+            div.innerHTML = `[${timestamp}] ${message}`;
+            logContent.appendChild(div);
             document.querySelector('.log-header > span').textContent = `📋 ${message}`;
             logContent.scrollTop = logContent.scrollHeight;
         }
@@ -118,6 +120,7 @@
         const client = {
             key: 'test-broadcast-123',
             endpoint: 'http://172.20.230.22:4242/reflector',
+            /** @type {RTCPeerConnection} */
             pc: null,
             sessionId: 0,
             stats: { received: 0, lastUpdate: 0 },
@@ -129,7 +132,8 @@
                 async get() {
                     return await fetch(`${client.endpoint}?key=${client.key}`).then(r => r.json());
                 },
-                async pollOffer() {
+                async pollOffer(delay = 2000) {
+                    addLog(`🔄 Polling for host offer (next offer in ${(delay/1000).toFixed(2)}s)...`);
                     const data = await this.get();
                     if (data?.offer?.type === 'offer') {
                         await client.pc.setRemoteDescription(data.offer);
@@ -139,7 +143,7 @@
                         if (data.ice) data.ice.forEach(ice => client.pc.addIceCandidate(ice.candidate));
                         return true;
                     }
-                    return backoff(() => this.pollOffer(), 2000);
+                    return backoff((nextDelay) => this.pollOffer(nextDelay), delay);
                 }
             },
             
@@ -184,13 +188,9 @@
                         });
                     };
                 };
-                
-                const _iceCandidates = [];
-                this.pc.onicecandidate = e => {
-                    if (e.candidate) _iceCandidates.push(e.candidate);
-                    else if (_iceCandidates.length > 0) this.signal.send({ type: 'ice', candidates: _iceCandidates });
-                };
-                
+
+                this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] });
+
                 this.pc.onconnectionstatechange = () => {
                     addLog(`Restablishing connection: ${this.pc.connectionState}`);
                     if (['failed', 'disconnected'].includes(this.pc.connectionState)) {
@@ -206,14 +206,13 @@
                     }
                 };
 
-                addLog('🔄 Polling for host offer...');
                 this.signal.pollOffer().then(() => {
                     setTimeout(() => {
                         if (this.pc.connectionState !== 'connected') {
                             addLog('Polling timeout, no host found');
                             updateStatus('disconnected', 'No host found - press Reconnect or start host');
                         }
-                    }, 5000); // 5 seconds timeout
+                    }, 5000); // give 5 seconds for connection to happen
                 });
                 
                 this.updateStats(); // Always start stats tracking
