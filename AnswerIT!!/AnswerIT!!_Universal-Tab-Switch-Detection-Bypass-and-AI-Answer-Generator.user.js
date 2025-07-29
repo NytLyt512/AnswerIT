@@ -1043,7 +1043,7 @@ function createPopupUI() {
 		const modelsContainer = providerSection.querySelector('.ait-provider-models');
 		providerModels.forEach((model) => {
 			const btn = Object.assign(document.createElement('button'), {innerHTML: `
-				<button class="ait-model-button" data-model="${model.name}" title="${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
+				<button class="ait-model-button" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
 					<span class="ait-model-name">${model.displayName}</span>
 					<div class="ait-model-status-container">
 						<span class="ait-model-progress">⠋</span>
@@ -1596,6 +1596,7 @@ GM_addStyle(`
 	.ait-model-button:hover {
 		transform: translateY(-1px);
 		box-shadow: var(--shadow-button-hover);
+		background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%);
 	}
 
 	.ait-model-name {
@@ -1672,14 +1673,14 @@ GM_addStyle(`
 	.ait-model-status-icon:hover .ait-model-retry-icon {
 		display: inline;
 	}
-
+	/*
 	.ait-model-button.success {
 		border-color: var(--success-color);
 		background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%);
 	}
-
+	*/
 	.ait-model-button.error {
-		border-color: #f44336;
+		border-color: #f443363a;
 		background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%);
 	}
 
