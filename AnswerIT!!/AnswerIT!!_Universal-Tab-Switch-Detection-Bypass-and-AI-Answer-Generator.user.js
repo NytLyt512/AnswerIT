@@ -6,7 +6,6 @@
 // @author       NytLyt512
 // @match		 https://NytLyt512.github.io/Userscripts/AnswerIT!!/*
 // @match		 file:///*/Userscripts/AnswerIT!!/*
-// @match		 file:///*/USERSCRIPTS/AnswerIT!!/*
 // @match        https://app.joinsuperset.com/assessments/*
 // @match        https://lms.talentely.com/*/*
 // @match        https://leetcode.com/problems/*
@@ -21,7 +20,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_deleteValue
 // @grant        GM_addStyle
-// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
 // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.2.1
 // @updateURL    https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!/AnswerIT!!_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
 // @downloadURL  https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!/AnswerIT!!_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
@@ -30,10 +29,10 @@
 // --- track last version to handle version incompatible changes ---
 if (GM_info.script.version > GM_getValue('script_version', '0')) {
 	GM_setValue('script_version', GM_info.script.version);
-	
+
 	// --- v4.0.0 ---
 	GM_deleteValue('hotkey'); // string -> { key: string, modifier: string }
-	
+	GM_deleteValue('reflector'); // new reflector
 	// migrate to multi-provider API keys
 	const oldGeminiKey = GM_getValue('geminiApiKey');
 	if (oldGeminiKey) {
@@ -52,19 +51,19 @@ if (GM_info.script.version > GM_getValue('script_version', '0')) {
 const config = {
 	/** @type {{ gemini: string, openai: string, anthropic: string, groq: string }} */
 	apiKeys: GM_getValue("apiKeys", {}),	// can add multiple by separating with commas
-	
+
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
-	
+
 	/** @type {{ visible: boolean, snapped: number, window: { x: number, y: number, w: number, h: number }, opacity: number }} */
 	popupState: GM_getValue("popupState", { visible: false, snapped: 2, window: { x: 0, y: 0, w: 500, h: 800 }, opacity: 1 }), // Default popup state (not visible, snapped to right side)
-	
+
 	/** @type {"light"|"dark"} */
 	theme: GM_getValue("theme", "light"), // Default theme is 'light'
-	
-	/** @type {{ enabled: boolean, lastOffer: string, lastAnswer: string }} */
-	reflector: GM_getValue("reflector", { enabled: false }),
-	
+
+	/** @type {{ enabled: boolean, key: string, endpoint: string, hotkey: { key: string, modifier: string }, enabledAt: number }} */
+	reflector: GM_getValue("reflector", { enabled: false, key: '', endpoint: '', hotkey: { key: "r", modifier: "alt" }, enabledAt: 0 }),
+
 	autoRun: false, // Default auto-run to false to avoid wasting api calls
 };
 
@@ -81,7 +80,7 @@ const websites = [
 		name: "Talentely",
 		urls: ["lms.talentely.com"],
 		questionSelectors: ["#question", ".question-text", () => document.querySelector(".test-question")],
-		getQuestionIdentifier: (element) => [...element.querySelectorAll("#question div>p")].slice(0,5).map(e=>e.textContent).join(),
+		getQuestionIdentifier: (element) => [...element.querySelectorAll("#question div>p")].slice(0, 5).map(e => e.textContent).join(),
 		getQuestionItem: (e) => {
 			const isCodingQn = !!e.querySelector('.ace_content');
 			if (isCodingQn) {
@@ -307,14 +306,121 @@ const popup = document.createElement("div");
 Window.aitPopup = popup; // Expose popup globally for easy access
 unsafeWindow.aitPopup = popup; // Expose to unsafeWindow for compatibility with other scripts
 
-const currentSite = websites.find(s => s.urls.some(url => location.href.includes(url))) || null;
+let currentSite = null;
 let currentQnIdentifier = null;
 let defaultModel = models[0].name; // This will be updated based on user's physical selection
 
 const isScriptPage = {
-	get: location.href.includes("/AnswerIT"),
+	get: location.href.includes("Userscripts/AnswerIT"),
 	configure: location.href.includes("/AnswerIT!!/configure.html"),
+	reflector: location.href.includes("/AnswerIT!!/reflector.html")
 }
+
+// --- Reflector ---
+const ReflectorHost = {
+	pc: null,
+	channel: null,
+
+	setStatus(text, color) {
+		if (text !== 'pending') console.log(`Reflector status: ${text}`);
+		color = color || { connecting: '#0af', connected: '#0f0', disconnected: '#f60', error: '#f00', warning: '#ff0', restarting: '#fa0' }[text] || '#fff';
+		let statusElm = document.querySelector('#ait-reflector-status');
+		if (!statusElm) {
+			statusElm = document.createElement('div');
+			statusElm.id = 'ait-reflector-status';
+			statusElm.style.cssText = `position:fixed;bottom:8px;right:8px;background:rgba(0,0,0,0.05);padding:3px 6px;border-radius:8px;font:9px monospace;z-index:10010;opacity:0.6;transition:all 0.5s;`;
+			document.body.appendChild(statusElm);
+		}
+		statusElm.onmouseenter = () => { statusElm.style.width = 'auto'; statusElm.style.opacity = '0.8'; statusElm.textContent = text.toUpperCase(); }
+		statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.style.opacity = '0.3'; statusElm.textContent = text[0].toUpperCase(); setTimeout(() => statusElm.style.opacity = '0', 3000); }
+		statusElm.textContent = text[0].toUpperCase();
+		statusElm.style.color = color;
+		statusElm.title = `Reflector: ${text}`;
+		statusElm.style.opacity = '0.8';
+		setTimeout(() => statusElm.style.opacity = '0', 1000);
+	},
+
+	signal: {
+		async send(data) {
+			await GM_fetch(`${config.reflector.endpoint}?key=${config.reflector.key}`, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
+		},
+		async get() {
+			return await GM_fetch(`${config.reflector.endpoint}?key=${config.reflector.key}`).then(r => r.json());
+		},
+		async pollAnswer(delay = 2000) {
+			ReflectorHost.setStatus(`polling answer (in ${Math.round(delay / 1000)}s)`, '#fa0');
+			const data = await this.get();
+			if (data?.answer?.type === 'answer' && ReflectorHost.pc?.signalingState === 'have-local-offer') {
+				await ReflectorHost.pc.setRemoteDescription(data.answer);
+				if (data.ice) data.ice.forEach(ice => ReflectorHost.pc.addIceCandidate(ice.candidate));
+				return true;
+			}
+			if (ReflectorHost.pc?.signalingState === 'have-local-offer' && delay < 60 * 1000) // 1 min max
+				return new Promise(resolve => setTimeout(() => resolve(this.pollAnswer(Math.min(delay * 1.5, 60 * 1000))), delay));
+			return Promise.reject(new Error('Polling stopped: no answer received'));
+		}
+	},
+
+	async init() {
+		if (this.pc?.connectionState === 'connecting' || this.pc?.signalingState === 'have-local-offer') return; // Prevent spam
+
+		await this.cleanup();
+		this.setStatus('initializing');
+
+		this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.iptel.org' }] });
+		this.channel = this.pc.createDataChannel('broadcast');
+		this.channel.onopen = () => { this.setStatus('connected'); this.pollBroadcast(); };
+		this.channel.onclose = () => this.setStatus('disconnected');
+
+		this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] }).catch(e => this.cleanup().then(this.setStatus('Error: ' + e.message, '#f00')));
+		this.pc.createOffer()
+			.then(offer => this.pc.setLocalDescription(offer))
+			.then(() => this.signal.send({ type: 'offer', sdp: this.pc.localDescription.sdp }))
+			.then(() => this.signal.pollAnswer().catch(e => this.cleanup().then(this.setStatus('Error: ' + e.message, '#f00'))));
+
+		this.keydownHandler = document.addEventListener('keydown', e => {
+			const k = config.reflector.hotkey.key.toLowerCase(), m = config.reflector.hotkey.modifier.toLowerCase();
+			if (e.key === k && e[m + 'Key'] === true) {
+				e.preventDefault();
+				this.setStatus('restarting');
+				setTimeout(() => this.init(), 300);
+			}
+		});
+	},
+
+	broadcast(element) {
+		if (!element || !this.channel) return;
+		if (this.channel?.bufferedAmount > 128 * 1024) {    // clients are probably not available
+			this.setStatus('⚠ buffer warning', '#ff0');
+			this._initTimer = setTimeout(() => this.init(), 2000);    // reconnect after 2 seconds
+		}
+		if (this.channel?.readyState === 'open') {
+			element.querySelectorAll('script, style, meta, link, noscript').forEach(el => el.remove());
+			const max = this.pc.sctp.maxMessageSize - 1000; // Leave space for metadata
+
+			this.channel.send(JSON.stringify({
+				url: location.href,
+				body: element.innerHTML.slice(0, max) + (element.innerHTML.length > max ? '<!-- truncated --!>' : ''),
+				timestamp: Date.now()
+			}));
+		}
+	},
+
+	_broadcastTimer: null,
+	pollBroadcast() {
+		if (this._broadcastTimer) clearInterval(this._broadcastTimer); // Prevent duplicates
+		this._broadcastTimer = setInterval(() => this.broadcast(page.getQnElm()), 10000);
+	},
+
+	async cleanup() {
+		clearTimeout(this._initTimer);
+		clearInterval(this._broadcastTimer);
+		this.pc?.close();
+		this.channel = null;
+		document.removeEventListener('keydown', this.keydownHandler);
+	}
+};
+unsafeWindow.host = ReflectorHost;
 
 // --- AI Providers ---
 const AIProviders = {
@@ -334,8 +440,8 @@ const AIProviders = {
 					const [mime, data] = src.split(',');
 					imageData = { mimeType: mime.split(':')[1].split(';')[0], data, url: src };
 				} else {
-					const blob = await GM_fetch(src).then(r => r.blob()).then(b => 
-						b.type && !b.type.startsWith('image/') || b.type.includes('/octet-stream') 
+					const blob = await GM_fetch(src).then(r => r.blob()).then(b =>
+						b.type && !b.type.startsWith('image/') || b.type.includes('/octet-stream')
 							? new Promise(resolve => {
 								const img = new Image();
 								img.onload = () => {
@@ -365,7 +471,7 @@ const AIProviders = {
 		async streamRequest(url, headers, data, onProgress, extractContent, isDone) {
 			return new Promise((resolve, reject) => {
 				let answerText = "", processedLength = 0;
-				GM_xmlhttpRequest({
+				GM.xmlHttpRequest({
 					method: "POST", url, headers, data: JSON.stringify(data),
 					onprogress: (r) => {
 						if (r.responseText?.length > processedLength) {
@@ -374,7 +480,7 @@ const AIProviders = {
 									try {
 										const content = extractContent(JSON.parse(line.slice(6)));
 										if (content) { answerText += content; onProgress(answerText); }
-									} catch {}
+									} catch { }
 								} else if (isDone?.(line)) return resolve(answerText);
 							});
 							processedLength = r.responseText.length;
@@ -386,13 +492,13 @@ const AIProviders = {
 						try {
 							const body = JSON.parse(r.responseText);
 							msg += ` - ${body?.error?.message || JSON.stringify(body)}`;
-						} catch {}
+						} catch { }
 						reject(new Error(msg));
 					}
 				});
 			});
 		},
-		
+
 		handleError(provider, response) {
 			if (response.status === 401 || response.status === 400) {
 				delete config.apiKeys[provider];
@@ -514,7 +620,7 @@ const AIState = {
 		}
 		return this.questions[qnId];
 	},
-	
+
 	// Get or create model state for a question
 	getModel(qnId, modelName) {
 		const qn = this.getQuestion(qnId);
@@ -523,12 +629,12 @@ const AIState = {
 		}
 		return qn.models[modelName];
 	},
-	
+
 	// Update model state and sync to question level
 	updateModel(qnId, modelName, updates) {
 		const model = this.getModel(qnId, modelName);
 		Object.assign(model, updates);
-		
+
 		// Sync to question level if this is the active model
 		const qn = this.getQuestion(qnId);
 		if (!qn.lastUsedModel && updates.status === 'generating') {
@@ -546,26 +652,26 @@ const AIState = {
 			qn.metadata = model.metadata;
 			this.updateUI();
 		}
-		
+
 		this.updateUI();
 	},
-	
+
 	// Update UI based on current state
 	updateUI() {
 		if (!popup.classList.contains('visible')) return;
-		
+
 		const qnId = this.currentQnId;
 		if (!qnId) return;
-		
+
 		const qn = this.getQuestion(qnId);
-		
+
 		// Update output area and caption
 		popup.outputArea.value = qn.answer;
 		// Auto-scroll if current scroll position is near the bottom (within 200px)
 		if (popup.outputArea.scrollTop >= popup.outputArea.scrollHeight - popup.outputArea.clientHeight - 200) {
 			popup.outputArea.scrollTop = popup.outputArea.scrollHeight;
 		}
-		
+
 		const caption = popup.querySelector("#ait-caption");
 		if (qn.status === 'generating' && qn.lastUsedModel) {
 			const model = this.getModel(qnId, qn.lastUsedModel);
@@ -581,31 +687,31 @@ const AIState = {
 		} else {
 			caption.textContent = qn.metadata || "Response metadata will appear here";
 		}
-		
+
 		// Update model buttons
 		models.forEach(model => {
 			const button = popup.modelBtn[model.name];
 			if (!button) return;
-			
+
 			const modelState = this.getModel(qnId, model.name);
 			this.updateButton(button, modelState.status);
 		});
-		
+
 		// Update status text
 		const statusText = document.getElementById("ait-status-text");
 		if (statusText) {
 			statusText.textContent = qn.status === 'generating' ? "Generating..." : "Ready";
 		}
 	},
-	
+
 	updateButton(button, status) {
 		const progressSpinner = button?.querySelector('.ait-model-progress');
 		const statusIcon = button?.querySelector('.ait-model-status-icon');
-		
+
 		button.classList.remove('loading', 'success', 'error');
 		if (progressSpinner) progressSpinner.style.display = 'none';
 		if (statusIcon) statusIcon.style.display = 'none';
-		
+
 		switch (status) {
 			case 'generating':
 				button.classList.add('loading');
@@ -620,12 +726,12 @@ const AIState = {
 				break;
 		}
 	},
-	
+
 	// Switch to a question (auto-click last used model if available)
 	switchToQuestion(qnId) {
 		this.currentQnId = qnId;
 		const qn = this.getQuestion(qnId);
-		
+
 		// Auto-click last used model if it has a successful answer
 		if (qn.lastUsedModel && qn.models[qn.lastUsedModel]?.status === 'success') {
 			// Simulate clicking the model button to load its cached result
@@ -634,10 +740,11 @@ const AIState = {
 				if (button) button.click();
 			}, 50);
 		}
-		
+
 		this.updateUI();
+		ReflectorHost.broadcast(page.getQnElm());
 	},
-	
+
 	// Generate answer with specified model
 	async generateAnswer(modelName, questionItem, questionId, forceRetry = false) {
 		const model = models.find(m => m.name === modelName);
@@ -645,32 +752,32 @@ const AIState = {
 
 		const modelState = this.getModel(questionId, modelName);
 		this.getQuestion(questionId).lastUsedModel = modelName; // Set last used model to current
-		
+
 		// Check cache unless force retry
 		if (!forceRetry && modelState.status === 'success') {
 			this.updateModel(questionId, modelName, {});
 			return modelState.answer;
 		}
-		
+
 		// Start generation
 		this.updateModel(questionId, modelName, {
 			status: 'generating',
 			startTime: Date.now(),
 			answer: ""
 		});
-		
+
 		try {
 			const provider = model.provider || 'gemini';
 			const apiKey = config.apiKeys[provider];
-			
+
 			if (!apiKey) {
 				throw new Error(`API key required for ${provider}. Please configure it.`);
 			}
-			
+
 			const answer = await AIProviders[provider].call(model, questionItem, apiKey, (partialAnswer) => {
 				this.updateModel(questionId, modelName, { answer: partialAnswer });
 			});
-			
+
 			const timeTaken = Date.now() - modelState.startTime;
 			this.updateModel(questionId, modelName, {
 				status: 'success',
@@ -678,7 +785,7 @@ const AIState = {
 				metadata: `Model: ${modelName} | Streamed (${timeTaken} ms)`,
 				startTime: null
 			});
-			
+
 			return answer;
 		} catch (error) {
 			this.updateModel(questionId, modelName, {
@@ -751,6 +858,7 @@ function createPopupUI() {
 	// workaround to bypass the CSP to block unsafe-inline on some sites like linkedin-learning
 	popup.querySelectorAll('[data-action]').forEach(e => e.onclick = () => e.dataset.action.split('.').reduce((a, c) => a?.[c], popup)(e));
 	popup.querySelector('#ait-popup-header').ondblclick = () => popup.controls.toggleSnapping();
+	document.querySelector("#ait-insert-button").style.display = !isScriptPage.reflector ? 'inline-block' : 'none';	// hide insert button on reflector page
 
 	// --- Setup Popup Controls ---
 	popup.toggleUi = () => {
@@ -1031,7 +1139,7 @@ function createPopupUI() {
 	}, {});
 
 	const capitalizeWords = (str) => str.replace(/\b\w+/g, word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-	
+
 	Object.entries(modelsByProvider).forEach(([provider, providerModels]) => {
 		const providerSection = document.createElement('div');
 		providerSection.className = 'ait-provider-section';
@@ -1039,10 +1147,11 @@ function createPopupUI() {
 			<div class="ait-provider-header">${capitalizeWords(provider)}</div>
 			<div class="ait-provider-models"></div>
 		`;
-		
+
 		const modelsContainer = providerSection.querySelector('.ait-provider-models');
 		providerModels.forEach((model) => {
-			const btn = Object.assign(document.createElement('button'), {innerHTML: `
+			const btn = Object.assign(document.createElement('button'), {
+				innerHTML: `
 				<button class="ait-model-button" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
 					<span class="ait-model-name">${model.displayName}</span>
 					<div class="ait-model-status-container">
@@ -1063,7 +1172,7 @@ function createPopupUI() {
 			popup.modelBtn[model.name] = btn;
 			modelsContainer.appendChild(btn);
 		});
-		
+
 		popup.querySelector("#ait-models-grid").appendChild(providerSection);
 	});
 
@@ -1092,7 +1201,7 @@ function createPopupUI() {
 			handleUpdateUIStates();
 		}
 	}, 200);
-	
+
 	// Update exposed popup reference
 	Window.aitPopup = popup;
 	document.body.appendChild(popup);
@@ -1125,7 +1234,7 @@ const page = {
 	getQnItem: (element) => {
 		if (!element) return "No question element found";
 		// If currentWebsite has a custom getQuestionItem function, use it
-		if (currentSite && typeof currentSite.getQuestionItem === "function") 
+		if (currentSite && typeof currentSite.getQuestionItem === "function")
 			return currentSite.getQuestionItem(element);
 		// Extract HTML content only if its length is reasonable
 		if (element.innerHTML.length < 15000) return element.innerHTML;
@@ -1147,13 +1256,13 @@ function getThemedColor(color) {
 
 // Basic FNV-1a 53-bit string hash function
 function hashCode(str) {
-    let hval = 0xcbf29ce484222325n;
-    for (let i = 0; i < str.length; ++i) {
-        hval ^= BigInt(str.charCodeAt(i));
-        hval *= 0x100000001b3n;
-        hval &= 0x1fffffffffffffn; // 53 bits
-    }
-    return hval.toString(16);
+	let hval = 0xcbf29ce484222325n;
+	for (let i = 0; i < str.length; ++i) {
+		hval ^= BigInt(str.charCodeAt(i));
+		hval *= 0x100000001b3n;
+		hval &= 0x1fffffffffffffn; // 53 bits
+	}
+	return hval.toString(16);
 }
 
 function getApiKey(provider = 'gemini') {
@@ -1179,7 +1288,7 @@ function getApiKey(provider = 'gemini') {
 			openai: "https://platform.openai.com/api-keys",
 			anthropic: "https://console.anthropic.com/settings/keys"
 		};
-		
+
 		const info = confirm(
 			`Quick Setup: An API key is a secret token that lets our service access the ${provider} API. Get one for FREE from ${urls[provider]}.\n\nClick OK if you already have an API key.\nClick Cancel to open the key creation page.`
 		);
@@ -1213,7 +1322,7 @@ function handleUpdateUIStates() {
 	if (newQnIdentifier !== currentQnIdentifier) {
 		// Update the tracker
 		currentQnIdentifier = newQnIdentifier;
-		
+
 		// Switch AIState to new question
 		AIState.switchToQuestion(newQnIdentifier);
 
@@ -1221,7 +1330,7 @@ function handleUpdateUIStates() {
 		if (config.autoRun) {
 			const qn = AIState.getQuestion(newQnIdentifier);
 			const modelToUse = qn.lastUsedModel || defaultModel;
-			
+
 			setTimeout(() => {
 				// Only run if question is still the same after a short delay
 				const checkQnElm = page.getQnElm();
@@ -1241,10 +1350,10 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 		popup.outputArea.value = "Error: Question not found on page. This page might not be supported yet.";
 		return;
 	}
-	
+
 	const questionIdentifier = page.getQnId(qElm);
 	const questionItem = page.getQnItem(qElm);
-	
+
 	// Add custom prompt if present
 	const customPromptArea = document.getElementById("ait-custom-prompt");
 	let finalQuestionItem = questionItem;
@@ -1268,7 +1377,7 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 
 	// Set current question in AIState
 	AIState.currentQnId = questionIdentifier;
-	
+
 	try {
 		await AIState.generateAnswer(modelName, finalQuestionItem, questionIdentifier, forceRetry);
 	} catch (error) {
@@ -1276,19 +1385,32 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 	}
 }
 
+async function detectCurrentWebsite() {
+	let href = isScriptPage.reflector
+		? await new Promise(r => {
+			let i = setInterval(() => {
+				let v = document.querySelector('input#shadow-url')?.value;
+				if (v) clearInterval(i), r(v);
+			}, 500);
+		})
+		: location.href;
+	currentSite = websites.find(s => s.urls.some(url => href.includes(url))) || null;
+	return currentSite;
+}
+
 function changeApiKey() {
 	const providers = ['gemini', 'openai', 'anthropic'];
 	const choice = prompt(`Which provider's API key would you like to change?\n\n${providers.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nEnter the number:`, '1');
-	
+
 	const providerIndex = parseInt(choice) - 1;
 	if (providerIndex < 0 || providerIndex >= providers.length) {
 		alert("Invalid choice. Please try again.");
 		return;
 	}
-	
+
 	const provider = providers[providerIndex];
 	const newKey = getApiKey(provider);
-	
+
 	if (newKey !== null && newKey !== "") {
 		alert(`${provider} API Key updated successfully.`);
 	} else if (newKey === "") {
@@ -1329,19 +1451,27 @@ function exposeConfigToPage() {
 	console.log("[AnswerIT!!] Exposing configuration to integration page");
 	const obj = {
 		supportedSites: websites,
-		GM_getValue: GM_getValue,
-		GM_setValue: GM_setValue,
+		reflector: config.reflector,
+		GM_getValue,
+		GM_setValue,
 	};
 	window.AnswerIT_Config = obj;
 	unsafeWindow.AnswerIT_Config = obj; // For compatibility with unsafeWindow
 }
 
-function initialize() {
+async function initialize() {
+	await detectCurrentWebsite();
+
 	// Expose config for integration page
-	if (isScriptPage.configure) {
+	if (isScriptPage.configure || isScriptPage.reflector) {
 		exposeConfigToPage();
+	} else {
+		// Run the reflector only if it's enabled and it was started within the last 6 hours
+		if (currentSite && config.reflector.enabled && (config.reflector.enabledAt > Date.now() - 6 * 60 * 60 * 1000)) {
+			// Start the reflector
+			ReflectorHost.init();
+		}
 	}
-	config.reflector = GM_getValue("reflector", config.reflector);
 
 	// Run detection bypass
 	setupDetectionBypass();
@@ -1349,36 +1479,34 @@ function initialize() {
 	// Ensure popup starts hidden by default on script initialization
 	config.popupState.visible = false;
 
-	// Only create popup on websites with questions when opened
-	document.addEventListener("DOMContentLoaded", function () {
-		if (currentSite) {
-			let attempts = 0;
-			const maxAttempts = 30;
+	// Create the popup
+	if (currentSite) {
+		let attempts = 0;
+		const maxAttempts = 30;
 
-			function tryCreatePopup() {
-				if (document.getElementById("ait-answer-popup")) {
-					console.debug("[AnswerIT!!] Popup already exists");
-					return;
-				}
-
-				attempts++;
-				createPopupUI();
-
-				// Verify popup was created successfully
-				if (!document.getElementById("ait-answer-popup") && attempts < maxAttempts) {
-					console.debug(`[AnswerIT!!] Popup creation attempt ${attempts} failed, retrying...`);
-					setTimeout(tryCreatePopup, 500);
-				} else if (attempts >= maxAttempts) {
-					console.error("[AnswerIT!!] Failed to create popup after maximum attempts");
-				} else {
-					console.debug("[AnswerIT!!] Popup created successfully");
-				}
+		function tryCreatePopup() {
+			if (document.getElementById("ait-answer-popup")) {
+				console.debug("[AnswerIT!!] Popup already exists");
+				return;
 			}
 
-			// Initial delay to let page load
-			setTimeout(tryCreatePopup, 1000);
+			attempts++;
+			createPopupUI();
+
+			// Verify popup was created successfully
+			if (!document.getElementById("ait-answer-popup") && attempts < maxAttempts) {
+				console.debug(`[AnswerIT!!] Popup creation attempt ${attempts} failed, retrying...`);
+				setTimeout(tryCreatePopup, 500);
+			} else if (attempts >= maxAttempts) {
+				console.error("[AnswerIT!!] Failed to create popup after maximum attempts");
+			} else {
+				console.debug("[AnswerIT!!] Popup created successfully");
+			}
 		}
-	});
+
+		// Initial delay to let page load
+		setTimeout(tryCreatePopup, 1000);
+	}
 }
 
 // Start the script

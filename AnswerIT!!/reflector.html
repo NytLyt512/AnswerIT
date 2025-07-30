@@ -51,7 +51,7 @@
         </div>
     </div>
     <div class="shadow-container">
-        <span id="shadow-url" style="text-decoration: underline;">unknown</span>
+        <input id="shadow-url" value="">
         <div id="shadow-content" style="margin-top: 10px;">
             <div class="user-message">
                 🌐 Waiting for host connection...<br>
@@ -166,7 +166,7 @@
                         const data = JSON.parse(e.data);
                         this.stats.received++;
                         this.stats.lastUpdate = data.timestamp;
-                        $('#shadow-url').get(0).textContent = data.url || 'unknown';
+                        $('#shadow-url').val(data.url || '');
                         
                         clearTimeout(this._messageTimer);
                         this._messageTimer = setTimeout(() => {
