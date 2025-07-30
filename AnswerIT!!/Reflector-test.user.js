@@ -11,9 +11,9 @@
 // ==/UserScript==
 
 const reflector = {
-    key: 'test-broadcast-123',
-    endpoint: 'http://172.20.230.22:4242/reflector',
-    hotkey: { key: 'r', ctrl: false, shift: false, alt: true }
+    key: '',
+    endpoint: '',
+    hotkey: { key: 'r', modifier: 'Alt' }
 };
 
 const host = {
@@ -23,7 +23,7 @@ const host = {
     channel: null,
     _broadcastTimer: null,
 
-    async setStatus(text, color) {
+    setStatus(text, color) {
         if (text !== 'pending') console.log(`Reflector status: ${text}`);
         color = color || { connecting: '#0af', connected: '#0f0', disconnected: '#f60', error: '#f00', warning: '#ff0', restarting: '#fa0' }[text] || '#fff';
         let statusElm = document.querySelector('#ait-reflector-status');
@@ -34,7 +34,7 @@ const host = {
             document.body.appendChild(statusElm);
         }
         statusElm.onmouseenter = () => { statusElm.style.width = 'auto'; statusElm.style.opacity = '0.8'; statusElm.textContent = text.toUpperCase(); }
-        statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.style.opacity = '0.3'; statusElm.textContent = text[0].toUpperCase(); }
+        statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.style.opacity = '0.3'; statusElm.textContent = text[0].toUpperCase(); setTimeout(() => statusElm.style.opacity = '0', 3000); }
         statusElm.textContent = text[0].toUpperCase();
         statusElm.style.color = color;
         statusElm.title = `Reflector: ${text}`;
@@ -44,21 +44,22 @@ const host = {
 
     signal: {
         async send(data) {
-            await GM_fetch(`${reflector.endpoint}?key=${reflector.key}`, { method: 'POST', body: JSON.stringify(data) });
+            await GM_fetch(`${reflector.endpoint}?key=${reflector.key}`, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
         },
         async get() {
             return await GM_fetch(`${reflector.endpoint}?key=${reflector.key}`).then(r => r.json());
         },
         async pollAnswer(delay = 2000) {
+            host.setStatus(`polling answer (in ${Math.round(delay/1000)}s)`, '#fa0');
             const data = await this.get();
             if (data?.answer?.type === 'answer' && host.pc?.signalingState === 'have-local-offer') {
                 await host.pc.setRemoteDescription(data.answer);
                 if (data.ice) data.ice.forEach(ice => host.pc.addIceCandidate(ice.candidate));
                 return true;
             }
-            if (host.pc?.signalingState === 'have-local-offer' && delay < 3*60*1000) // 3 min max
-                return new Promise(resolve => setTimeout(() => resolve(this.pollAnswer(Math.min(delay * 1.5, 3*60*1000))), delay));
-            return false;
+            if (host.pc?.signalingState === 'have-local-offer' && delay < 60*1000) // 1 min max
+                return new Promise(resolve => setTimeout(() => resolve(this.pollAnswer(Math.min(delay * 1.5, 60*1000))), delay));
+            return Promise.reject(new Error('Polling stopped: no answer received'));
         }
     },
 
@@ -71,17 +72,17 @@ const host = {
         this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.iptel.org' }] });
         this.channel = this.pc.createDataChannel('broadcast');
         this.channel.onopen = () => { this.setStatus('connected'); this.broadcast(); };
-        this.channel.onclose = () => { this.setStatus('disconnected'); setTimeout(() => this.init(), 5000); };
+        this.channel.onclose = () => this.setStatus('disconnected');
 
-        this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] });
+        this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] }).catch(e => this.cleanup().then(this.setStatus('Error: ' + e.message, '#f00')));
         this.pc.createOffer()
             .then(offer => this.pc.setLocalDescription(offer))
             .then(() => this.signal.send({ type: 'offer', sdp: this.pc.localDescription.sdp }))
-            .then(() => { this.setStatus('polling answer', '#fa0'); this.signal.pollAnswer() })
+            .then(() => this.signal.pollAnswer().catch(e => this.cleanup().then(this.setStatus('Error: ' + e.message, '#f00'))));
 
         this.keydownHandler = document.addEventListener('keydown', e => {
-            const k = reflector.hotkey;
-            if (e.key.toLowerCase() === k.key && e.ctrlKey === !!k.ctrl && e.shiftKey === !!k.shift && e.altKey === !!k.alt) {
+            const k = reflector.hotkey.key.toLowerCase(), m = reflector.hotkey.modifier.toLowerCase();
+            if (e.key === k && e[m + 'Key'] === true) {
                 e.preventDefault();
                 this.setStatus('restarting');
                 setTimeout(() => this.init(), 300);
@@ -90,7 +91,7 @@ const host = {
     },
 
     broadcast() {
-        if (this._broadcastTimer) return; // Prevent duplicates
+        if (this._broadcastTimer) clearInterval(this._broadcastTimer); // Prevent duplicates
 
         this._broadcastTimer = setInterval(() => {
             if (this.channel?.bufferedAmount > 128 * 1024) {    // clients are probably not available

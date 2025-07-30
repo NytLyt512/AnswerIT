@@ -1,4 +1,15 @@
-#!/usr/bin/env python3
+"""
+Reflector Server - WebRTC Signaling Relay for WebRTC offer/answer/ICE exchange using key-based channels.
+
+Metadata:
+    Version: 1.0.0
+    Author: NytLyt512 J.S
+    License: MIT
+    File: reflector_server.py
+    Description: Minimal signaling relay for AnswerIT using only Python stdlib. (cuz its a pain to write another shell script for supporting devices that dont have Flask installed)
+    Last Updated: 2025-07-30
+"""
+
 import json
 import os
 import socket
@@ -143,8 +154,7 @@ if os.environ.get('PYTHONANYWHERE_SITE'):
         pass
 
 
-if __name__ == '__main__':
-    banner = f"\033[1;35m{'-'*66}" + r"""
+banner = f"\033[1;35m{'-'*66}" + r"""
    _____                                      .______________._._.
   /  _  \   ____   ________  _  __ ___________|   \__    ___/| | |
  /  /_\  \ /    \ /  ___/\ \/ \/ // __ \_  __ \   | |    |   | | |
@@ -153,30 +163,32 @@ if __name__ == '__main__':
         \/     \/     \/              \/                      \/\/
 """ + f"{'-'*66}\033[0m\n"
 
-    parser = ArgumentParser()
-    parser.add_argument('--port', '-p', default=4242, type=int)
-    args = parser.parse_args()
-    
-    port = args.port
+parser = ArgumentParser()
+parser.add_argument('--port', '-p', default=4242, type=int)
+args = parser.parse_args()
 
-    # Get local IP
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except:
-        local_ip = 'your-ip-address'
+# Get local IP
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    local_ip = s.getsockname()[0]
+    s.close()
+except:
+    local_ip = 'your-ip-address'
 
-    print(banner)
-    print(f'''\033[1;36m
+port = args.port
+host = os.environ.get('PYTHONANYWHERE_SITE', f'{local_ip}:{port}')
+
+print(banner)
+print(f'''\033[1;36m
 Reflector Signaling Server is running! 
 In your AnswerIT Reflector configuration, set the endpoint as: 
-    -\033[1;32m http://{local_ip}:{port}/reflector\033[0m
-    ''')
-    print(f"Routes:")
-    print(f"  POST /reflector?key=YOUR_KEY - Store signaling data")
-    print(f"  GET  /reflector?key=YOUR_KEY - Retrieve signaling data")
-    print(f"  DELETE /reflector?key=YOUR_KEY - Delete signaling data")
+-\033[1;32m http://{host}/reflector\033[0m
+''')
+print(f"Routes:")
+print(f"  POST /reflector?key=YOUR_KEY - Store signaling data")
+print(f"  GET  /reflector?key=YOUR_KEY - Retrieve signaling data")
+print(f"  DELETE /reflector?key=YOUR_KEY - Delete signaling data")
 
+if __name__ == '__main__':
     HTTPServer(('0.0.0.0', port), Handler).serve_forever()

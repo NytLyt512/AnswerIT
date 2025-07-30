@@ -118,8 +118,8 @@
         }
         
         const client = {
-            key: 'test-broadcast-123',
-            endpoint: 'http://172.20.230.22:4242/reflector',
+            key: '',
+            endpoint: '',
             /** @type {RTCPeerConnection} */
             pc: null,
             sessionId: 0,
@@ -127,13 +127,13 @@
             
             signal: {
                 async send(data) {
-                    await fetch(`${client.endpoint}?key=${client.key}`, { method: 'POST',body: JSON.stringify(data) });
+                    await fetch(`${client.endpoint}?key=${client.key}`, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
                 },
                 async get() {
                     return await fetch(`${client.endpoint}?key=${client.key}`).then(r => r.json());
                 },
                 async pollOffer(delay = 2000) {
-                    addLog(`🔄 Polling for host offer (next offer in ${(delay/1000).toFixed(2)}s)...`);
+                    addLog(`🔄 Polling for host offer (next offer in ${Math.round(delay/1000)}s)...`);
                     const data = await this.get();
                     if (data?.offer?.type === 'offer') {
                         await client.pc.setRemoteDescription(data.offer);
@@ -152,6 +152,7 @@
                 this.sessionId++;
                 addLog(`Starting session ${this.sessionId}`);
                 updateStatus('connecting', 'Establishing connection...');
+                if (!this.key) return updateStatus('error', 'Reflector key is not set');
                 
                 this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.iptel.org' }] });
                 
@@ -213,7 +214,7 @@
                             updateStatus('disconnected', 'No host found - press Reconnect or start host');
                         }
                     }, 5000); // give 5 seconds for connection to happen
-                });
+                }).catch(e=>updateStatus('error', e.message));
                 
                 this.updateStats(); // Always start stats tracking
                 return true; // Return success for backoff
