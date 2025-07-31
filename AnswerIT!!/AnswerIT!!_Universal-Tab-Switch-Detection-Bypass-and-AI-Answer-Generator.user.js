@@ -325,12 +325,7 @@ const ReflectorHost = {
 		if (text !== 'pending') console.log(`Reflector status: ${text}`);
 		color = color || { connecting: '#0af', connected: '#0f0', disconnected: '#f60', error: '#f00', warning: '#ff0', restarting: '#fa0' }[text] || '#fff';
 		let statusElm = document.querySelector('#ait-reflector-status');
-		if (!statusElm) {
-			statusElm = document.createElement('div');
-			statusElm.id = 'ait-reflector-status';
-			statusElm.style.cssText = `position:fixed;bottom:8px;right:8px;background:rgba(0,0,0,0.05);padding:3px 6px;border-radius:8px;font:9px monospace;z-index:10010;opacity:0.6;transition:all 0.5s;`;
-			document.body.appendChild(statusElm);
-		}
+		if (!statusElm) statusElm = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'ait-reflector-status' }));
 		statusElm.onmouseenter = () => { statusElm.style.width = 'auto'; statusElm.style.opacity = '0.8'; statusElm.textContent = text.toUpperCase(); }
 		statusElm.onmouseleave = () => { statusElm.style.width = '10px'; statusElm.style.opacity = '0.3'; statusElm.textContent = text[0].toUpperCase(); setTimeout(() => statusElm.style.opacity = '0', 3000); }
 		statusElm.textContent = text[0].toUpperCase();
@@ -858,7 +853,7 @@ function createPopupUI() {
 	// workaround to bypass the CSP to block unsafe-inline on some sites like linkedin-learning
 	popup.querySelectorAll('[data-action]').forEach(e => e.onclick = () => e.dataset.action.split('.').reduce((a, c) => a?.[c], popup)(e));
 	popup.querySelector('#ait-popup-header').ondblclick = () => popup.controls.toggleSnapping();
-	document.querySelector("#ait-insert-button").style.display = !isScriptPage.reflector ? 'inline-block' : 'none';	// hide insert button on reflector page
+	popup.querySelector("#ait-insert-button").style.display = !isScriptPage.reflector ? 'inline-block' : 'none';	// hide insert button on reflector page
 
 	// --- Setup Popup Controls ---
 	popup.toggleUi = () => {
@@ -1932,5 +1927,18 @@ GM_addStyle(`
 
 	#ait-output-container {
 		position: relative;
+	}
+
+	#ait-reflector-status {
+		position: fixed;
+		bottom: 8px;
+		right: 8px;
+		background: rgba(0, 0, 0, 0.05);
+		padding: 3px 6px;
+		border-radius: 8px;
+		font: 9px monospace;
+		z-index: 10010;
+		opacity: 0.6;
+		transition: all 0.5s;
 	}
 `);
