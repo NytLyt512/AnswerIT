@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         AnswerIT!! - Universal Tab Switch Detection Bypass and AI Answer Generator
+// @name         AnswerIT - Universal Tab Switch Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
 // @version      4.0.0
-// @description  Universal tab switch detection bypass and AI answer generator with popup interface
+// @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
-// @match		 https://NytLyt512.github.io/Userscripts/AnswerIT!!/*
-// @match		 file:///*/Userscripts/AnswerIT!!/*
+// @match		 https://NytLyt512.github.io/Userscripts/AnswerIT/*
+// @match		 file:///*/Userscripts/AnswerIT/*
 // @match        https://app.joinsuperset.com/assessments/*
 // @match        https://lms.talentely.com/*/*
 // @match        https://leetcode.com/problems/*
@@ -22,8 +22,8 @@
 // @grant        GM_addStyle
 // @grant        GM.xmlHttpRequest
 // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.2.1
-// @updateURL    https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!/AnswerIT!!_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
-// @downloadURL  https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!/AnswerIT!!_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
+// @updateURL    https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT/AnswerIT_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
+// @downloadURL  https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT/AnswerIT_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js
 // ==/UserScript==
 
 // --- track last version to handle version incompatible changes ---
@@ -312,8 +312,8 @@ let defaultModel = models[0].name; // This will be updated based on user's physi
 
 const isScriptPage = {
 	get: location.href.includes("Userscripts/AnswerIT"),
-	configure: location.href.includes("/AnswerIT!!/configure.html"),
-	reflector: location.href.includes("/AnswerIT!!/reflector.html")
+	configure: location.href.includes("/AnswerIT/configure.html"),
+	reflector: location.href.includes("/AnswerIT/reflector.html")
 }
 
 // --- Reflector ---
@@ -816,8 +816,8 @@ function createPopupUI() {
 	popup.innerHTML = `
 		<div id="ait-popup-header" style="position: relative;">
 			<span style="display: flex; gap: 4px">
-				<h3 id="ait-popup-title">AnswerIT!!</h3>
-				<a id="ait-popup-version" href="https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT!!" target="_blank">v${GM_info.script.version}</a>
+				<h3 id="ait-popup-title">AnswerIT</h3>
+				<a id="ait-popup-version" href="https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT" target="_blank">v${GM_info.script.version}</a>
 			</span>
 			<div id="ait-popup-controls">
 				<button id="ait-opacity-toggle" title="Adjust opacity" data-action="controls.toggleOpacity">◐</button>
@@ -1262,12 +1262,12 @@ function hashCode(str) {
 
 function getApiKey(provider = 'gemini') {
 	const setupChoice = confirm(
-		`🎯 Welcome to AnswerIT!!\n\nTo get started, you need to configure your FREE ${provider} API key.\n\nClick OK to open our modern setup page with easy instructions.\nClick Cancel to use the quick setup here.`
+		`🎯 Welcome to AnswerIT\n\nTo get started, you need to configure your FREE ${provider} API key.\n\nClick OK to open our modern setup page with easy instructions.\nClick Cancel to use the quick setup here.`
 	);
 
 	if (setupChoice) {
 		// Open the modern setup page
-		window.open("https://NytLyt512.github.io/Userscripts/AnswerIT!!/configure.html", "_blank");
+		window.open("https://NytLyt512.github.io/Userscripts/AnswerIT/configure.html", "_blank");
 		alert(
 			"🔧 Setup page opened in a new tab!\n\n" +
 			`1. Get your API key from ${provider === 'gemini' ? 'Google AI Studio' : provider}\n` +
@@ -1439,11 +1439,11 @@ GM_registerMenuCommand("Change API Key", changeApiKey);
 GM_registerMenuCommand("Clear Response Cache", () => AIState.clearCache());
 GM_registerMenuCommand("Change Hotkey", changeHotkey);
 GM_registerMenuCommand("Reset Popup State", () => popup.resetState());
-GM_registerMenuCommand("🪟 Open Setup Page", () => window.open("https://NytLyt512.github.io/Userscripts/AnswerIT!!/configure.html", "_blank"));
+GM_registerMenuCommand("🪟 Open Setup Page", () => window.open("https://NytLyt512.github.io/Userscripts/AnswerIT/configure.html", "_blank"));
 
 // --- Initialization ---
 function exposeConfigToPage() {
-	console.log("[AnswerIT!!] Exposing configuration to integration page");
+	console.log("[AnswerIT] Exposing configuration to integration page");
 	const obj = {
 		supportedSites: websites,
 		reflector: config.reflector,
@@ -1481,7 +1481,7 @@ async function initialize() {
 
 		function tryCreatePopup() {
 			if (document.getElementById("ait-answer-popup")) {
-				console.debug("[AnswerIT!!] Popup already exists");
+				console.debug("[AnswerIT] Popup already exists");
 				return;
 			}
 
@@ -1490,12 +1490,12 @@ async function initialize() {
 
 			// Verify popup was created successfully
 			if (!document.getElementById("ait-answer-popup") && attempts < maxAttempts) {
-				console.debug(`[AnswerIT!!] Popup creation attempt ${attempts} failed, retrying...`);
+				console.debug(`[AnswerIT] Popup creation attempt ${attempts} failed, retrying...`);
 				setTimeout(tryCreatePopup, 500);
 			} else if (attempts >= maxAttempts) {
-				console.error("[AnswerIT!!] Failed to create popup after maximum attempts");
+				console.error("[AnswerIT] Failed to create popup after maximum attempts");
 			} else {
-				console.debug("[AnswerIT!!] Popup created successfully");
+				console.debug("[AnswerIT] Popup created successfully");
 			}
 		}
 
