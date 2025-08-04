@@ -35,10 +35,10 @@ Works seamlessly with popular learning and assessment platforms. The configurati
    - [Violentmonkey](https://violentmonkey.github.io/get-it/) (Recommended)
    - [Tampermonkey](https://www.tampermonkey.net/) (Popular, but see note below)
 2. **Install AnswerIT**
-   - [Install Script](https://github.com/NytLyt512/Userscripts/raw/refs/heads/main/AnswerIT/AnswerIT_Universal-Tab-Switch-Detection-Bypass-and-AI-Answer-Generator.user.js)
+   - [Install Script](https://github.com/NytLyt512/raw/refs/heads/main/AnswerIT/AnswerIT.user.js)
 3. **Configure Your Settings**
    - You'll be guided through the setup page to enter your API keys and preferences.
-        - [Configuration Page](https://NytLyt512.github.io/Userscripts/AnswerIT/configure.html)
+        - [Configuration Page](https://NytLyt512.github.io/AnswerIT/configure.html)
 
 > **Note:**
 > - **Tampermonkey Bug:** Due to a known bug in Tampermonkey on Chromium browsers, model responses will not stream in real-time (you'll only see the final answer after generation). For full streaming support, use **Violentmonkey**.
@@ -70,7 +70,7 @@ Enter your keys in the tabbed setup page. Each provider can be tested and saved 
 - **API Key Issues**: Double-check for typos, extra spaces, or expired keys
 - **Streaming Not Working**: Use Violentmonkey for real-time streaming (see note above)
 - **UI Not Appearing**: Refresh the page, check supported sites, or ensure your userscript manager is enabled
-- **Other Issues**: [Report on GitHub](https://github.com/NytLyt512/Userscripts/issues/new?title=[AnswerIT])
+- **Other Issues**: [Report on GitHub](https://github.com/NytLyt512/issues/new?title=)
 
 ## 🛡️ Privacy & Security
 - **Local Storage**: All keys and settings are stored only in your browser
