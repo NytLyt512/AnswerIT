@@ -7,8 +7,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #fff; }
-        .header { position: fixed; top: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); 
-                 padding: 15px 20px; z-index: 1000; border-bottom: 1px solid #333; }
+        .header { position: fixed; top: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); padding: 15px 20px; z-index: 1000; border-bottom: 1px solid #333; }
         .title { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
         .status-bar { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
         .connection-status { display: flex; align-items: center; gap: 8px; }
@@ -16,21 +15,41 @@
         .status-connected { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
         .status-connecting { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; animation: pulse 1s infinite; }
         .status-disconnected { background: #ff4444; box-shadow: 0 0 8px #ff4444; }
-        .force-reconnect { margin-left: 10px; padding: 4px 8px; background: #333; border: 1px solid #555; 
-                          border-radius: 4px; color: #fff; font-size: 10px; cursor: pointer; transition: all 0.2s; }
+        .force-reconnect { margin-left: 10px; padding: 4px 8px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; font-size: 10px; cursor: pointer; transition: all 0.2s; }
         .force-reconnect:hover { background: #444; border-color: #777; }
         .stats { text-align: right; opacity: 0.8; }
-        .shadow-container { margin-top: 80px; padding: 20px; background: #111; border-radius: 8px; 
-                           box-shadow: 0 4px 20px rgba(0,0,0,0.5); min-height: calc(100vh - 100px); pointer-events: none !important;}
-        .log-area { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.95); 
-                   border-top: 1px solid #333; transition: all 0.3s ease; z-index: 999; }
-        .log-header { padding: 8px 15px; cursor: pointer; display: flex; justify-content: space-between; 
-                     align-items: center; font-size: 12px; background: #1a1a1a; }
-        .log-content { padding: 10px 15px; font-size: 11px; font-family: 'Courier New', monospace; 
-                      background: #0a0a0a; max-height: 200px; overflow-y: auto; display: none; }
+        .shadow-container { margin-top: 80px; padding: 20px; background: #111; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); min-height: calc(100vh - 100px); }
+        .shadow-container #fallback-content { pointer-events: none !important; }
+        .log-area { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.95); border-top: 1px solid #333; transition: all 0.3s ease; z-index: 999; }
+        .log-header { padding: 8px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 12px; background: #1a1a1a; }
+        .log-content { padding: 10px 15px; font-size: 11px; font-family: 'Courier New', monospace; background: #0a0a0a; max-height: 200px; overflow-y: auto; display: none; }
         .log-expanded .log-content { display: block; }
         .user-message { padding: 15px; text-align: center; opacity: 0.7; font-size: 14px; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        
+        /* Configuration Modal */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+        .modal-content { background: #1a1a1a; margin: 10% auto; padding: 0; width: 400px; max-width: 90%; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.7); }
+        .modal-header { padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { margin: 0; color: #fff; font-size: 18px; font-weight: 600; }
+        .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: #fff; }
+        .modal-body { padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #ccc; font-size: 14px; font-weight: 500; }
+        .form-group input { width: 100%; padding: 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #fff; font-size: 14px; box-sizing: border-box; }
+        .form-group input:focus { outline: none; border-color: #00ff88; box-shadow: 0 0 5px rgba(0,255,136,0.3); }
+        .form-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+        .form-actions button { padding: 10px 20px; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .form-actions button:first-child { background: #00ff88; color: #000; font-weight: 600; }
+        .form-actions button:first-child:hover { background: #00dd77; transform: translateY(-1px); }
+        .form-actions button:last-child { background: #444; color: #ccc; }
+        .form-actions button:last-child:hover { background: #555; color: #fff; }
+        
+        /* AnswerIT Popup Container */
+        #answerit-popup-container * { cursor: default !important; }
+        #ait-answer-popup { display: contents !important; }
+        #ait-popup-content { height: 80vh !important; }
     </style>
 </head>
 <body>
@@ -41,7 +60,8 @@
                 <div class="connection-status">
                     <div class="status-dot status-connecting" id="statusDot"></div>
                     <span id="statusText">Connecting...</span>
-                    <button class="force-reconnect" onclick="forceReconnect()" title="Force reconnect">🔄 Reconnect</button>
+                    <button class="force-reconnect" onclick="forceReconnect()" title="Force reconnect">🔄</button>
+                    <button class="force-reconnect" onclick="showConfig()" title="Configure endpoint and key">⚙️</button>
                 </div>
                 <div class="stats" id="stats">
                     <div>Chunks received: <span id="receivedCount">0</span></div>
@@ -51,11 +71,13 @@
         </div>
     </div>
     <div class="shadow-container">
-        <input id="shadow-url" value="">
-        <div id="shadow-content" style="margin-top: 10px;">
+        <div id="answerit-popup-container" style="display: none;">
+            <!-- AnswerIT popup will be displayed here -->
+        </div>
+        <div id="fallback-content" style="margin-top: 10px;">
             <div class="user-message">
                 🌐 Waiting for host connection...<br>
-                <small>The page will automatically mirror once connected</small>
+                <small>The AnswerIT popup will appear here once connected</small>
             </div>
         </div>
     </div>
@@ -65,6 +87,30 @@
             <span id="logToggle">▲ Show</span>
         </div>
         <div class="log-content" id="logContent">Initializing connection...</div>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Reflector Configuration</h3>
+                <span class="close" onclick="hideConfig()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="reflector-endpoint">Reflector Endpoint:</label>
+                    <input type="text" id="reflector-endpoint" placeholder="https://jeryjs.pythonanywhere.com/reflector">
+                </div>
+                <div class="form-group">
+                    <label for="reflector-key">Reflector Key:</label>
+                    <input type="text" id="reflector-key" placeholder="your-unique-key">
+                </div>
+                <div class="form-actions">
+                    <button onclick="saveConfig()">Save & Reconnect</button>
+                    <button onclick="hideConfig()">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -116,12 +162,59 @@
             updateStatus('connecting', 'Force reconnecting...');
             client.startConnection();
         }
+
+        function showConfig() {
+            document.getElementById('reflector-endpoint').value = client.endpoint;
+            document.getElementById('reflector-key').value = client.key;
+            document.getElementById('configModal').style.display = 'block';
+        }
+
+        function hideConfig() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+
+        function saveConfig() {
+            const endpoint = document.getElementById('reflector-endpoint').value.trim();
+            const key = document.getElementById('reflector-key').value.trim();
+            
+            if (!endpoint || !key) {
+                alert('Please fill in both endpoint and key');
+                return;
+            }
+
+            client.endpoint = endpoint;
+            client.key = key;
+            localStorage.setItem('reflector-endpoint', endpoint);
+            localStorage.setItem('reflector-key', key);
+            
+            addLog(`🔧 Configuration saved: ${endpoint.slice(0,30)}...`);
+            hideConfig();
+            forceReconnect();
+        }
+
+        function sendActionToHost(action, data = {}) {
+            if (!client.dataChannel || client.dataChannel.readyState !== 'open') {
+                addLog('⚠️ Cannot send action: not connected to host');
+                return;
+            }
+
+            const message = {
+                type: 'action',
+                action: action,
+                data: { ...data },
+                timestamp: Date.now()
+            };
+
+            client.dataChannel.send(JSON.stringify(message));
+            addLog(`📤 Sent action: ${action}`);
+        }
         
         const client = {
-            key: '',
-            endpoint: '',
+            key: localStorage.getItem('reflector-key') || '',
+            endpoint: localStorage.getItem('reflector-endpoint') || 'https://jeryjs.pythonanywhere.com/reflector',
             /** @type {RTCPeerConnection} */
             pc: null,
+            dataChannel: null,
             sessionId: 0,
             stats: { received: 0, lastUpdate: 0 },
             
@@ -158,26 +251,41 @@
                 
                 this.pc.ondatachannel = e => {
                     const channel = e.channel;
+                    client.dataChannel = channel;
+                    
                     channel.onopen = () => {
                         addLog('📡 Connected to host');
                         updateStatus('connected', 'Connected and receiving updates');
                     };
+                    
+                    _prevData = null;
                     channel.onmessage = e => {
                         const data = JSON.parse(e.data);
                         this.stats.received++;
                         this.stats.lastUpdate = data.timestamp;
-                        $('#shadow-url').val(data.url || '');
                         
                         clearTimeout(this._messageTimer);
                         this._messageTimer = setTimeout(() => {
-                                addLog('⚠️ No response received, check connection');
-                                updateStatus('disconnected', 'No updates received - click Reconnect');
+                            addLog('⚠️ No response received, check connection');
+                            updateStatus('disconnected', 'No updates received - click Reconnect');
                         }, 10000);
 
-                        document.querySelector('#shadow-content').innerHTML = data.body;
+                        // Handle AnswerIT popup UI
+                        if (data.html && data.html.includes('ait-answer-popup')) {
+                            if (_prevData?.html !== data.html) {
+                                _prevData = data; // Store previous data to avoid redundant updates
+                                this.handleAnswerITPopup(data);
+                            }
+                        } else {
+                            // Fallback for other content
+                            document.querySelector('#fallback-content').innerHTML = data.body || 'No content received';
+                        }
+                        
                         updateStatus('connected', 'Receiving live updates');
                     };
+                    
                     channel.onclose = () => {
+                        client.dataChannel = null;
                         addLog('⚡ Connection lost, reconnecting...');
                         updateStatus('connecting', 'Reconnecting...');
                         // Use backoff to automatically reconnect when host reloads
@@ -241,11 +349,72 @@
                     this.pc.close();
                     this.pc = null;
                 }
+                this.dataChannel = null;
                 clearTimeout(this._statsTimer);
+            },
+
+            handleAnswerITPopup(data) {
+                const container = document.getElementById('answerit-popup-container');
+                const fallback = document.getElementById('fallback-content');
+                
+                // Hide fallback and show popup container
+                fallback.style.display = 'none';
+                container.style.display = 'block';
+                
+                // Set the popup HTML
+                container.innerHTML = data.html;
+                
+                // Fix textarea values from textContent (since value property doesn't serialize)
+                container.querySelectorAll('textarea').forEach(textarea => {
+                    if (textarea.textContent) textarea.value = textarea.textContent;
+                });
+                
+                // Set up event handlers for the reflected UI
+                this.setupPopupEventHandlers();
+            },
+
+            setupPopupEventHandlers() {
+                const container = document.getElementById('answerit-popup-container');
+                if (!container) return;
+
+                // Handle all buttons with data-action attributes
+                container.querySelectorAll('[data-action]').forEach(button => {
+                    button.addEventListener('click', (e) => sendActionToHost('button-click', { action: button.dataset.action, elementId: button.id }));
+                });
+
+                // Handle model buttons specifically
+                container.querySelectorAll('.ait-model-button').forEach((button, index) => 
+                    button.addEventListener('click', (e) => sendActionToHost('model-click', { modelIndex: index }))
+                );
+
+                // Handle custom prompt textarea
+                container.querySelector('#ait-custom-prompt')?.addEventListener('input', (e) => sendActionToHost('custom-prompt-change', { value: e.target.value }));
             }
         };
         
         client.startConnection();
+
+        // Handle ESC key to close modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('configModal');
+                if (modal.style.display === 'block') {
+                    hideConfig();
+                }
+            }
+        });
+    </script>
+    <script>
+        // load the css block from the main script and inject it into the popup (to reduce payload size)
+        (async () => {
+            const text = await fetch('AnswerIT.user.js').then(response => response.text());
+            const cssText = text.match(/GM_addStyle\(`(.*)`\);\n*/s)[1].trim();
+            if (cssText) {
+                const styleEl = document.createElement('style');
+                styleEl.textContent = cssText;
+                document.head.appendChild(styleEl);
+            }
+        })();
     </script>
 </body>
 </html>
