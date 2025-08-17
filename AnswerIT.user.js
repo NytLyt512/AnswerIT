@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnswerIT - Universal Tab Switch + Screenshare Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
-// @version      4.0.0
+// @version      4.1.0
 // @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
 // @match		 https://NytLyt512.github.io/AnswerIT/*

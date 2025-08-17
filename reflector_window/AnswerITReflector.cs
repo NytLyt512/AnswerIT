@@ -12,6 +12,9 @@ namespace AnswerITReflector
     {
         private WebView2 webView2;
         private string tempWebViewFolder;
+        private Panel opacitySlider;
+        private int sliderValue = 80;
+        private bool isDraggingSlider = false;
 
         // Windows API
         [DllImport("user32.dll")]
@@ -32,6 +35,7 @@ namespace AnswerITReflector
         private const int WS_EX_NOACTIVATE = 0x08000000;
         private const int DWMWA_EXCLUDED_FROM_PEEK = 12;
         private const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
         private const int WM_HOTKEY = 0x0312;
         private const uint MOD_ALT = 0x0001;
         private const int HOTKEY_ID = 0xB001;
@@ -52,13 +56,31 @@ namespace AnswerITReflector
             
             // Form properties
             this.ClientSize = new Size(400, 720);
-            this.Text = "AnswerIT Reflector";
+            this.Text = "AIT Reflector";
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.Sizable;
             this.BackColor = Color.FromArgb(20, 20, 20);
             this.TopMost = true;
             this.MinimumSize = new Size(400, 300);
             this.ShowInTaskbar = false;
+            this.Opacity = 0.8; // Default 80% opacity
+            
+            // Custom opacity slider
+            this.opacitySlider = new Panel();
+            this.opacitySlider.Size = new Size(100, 5);
+            this.opacitySlider.Location = new Point(this.Width - 120, 10);
+            this.opacitySlider.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            this.opacitySlider.BackColor = Color.Gray;
+            this.opacitySlider.Paint += (s, e) => {
+                // Draw slider track and thumb
+                int thumbX = (sliderValue - 5) * (opacitySlider.Width - 4) / 94; // 5-99 range
+                e.Graphics.FillRectangle(Brushes.DarkGray, 0, 0, opacitySlider.Width, opacitySlider.Height);
+                e.Graphics.FillRectangle(Brushes.White, thumbX, 0, 4, opacitySlider.Height);
+            };
+            this.opacitySlider.MouseDown += (s, e) => { isDraggingSlider = true; UpdateSlider(e.X); };
+            this.opacitySlider.MouseMove += (s, e) => { if (isDraggingSlider) UpdateSlider(e.X); };
+            this.opacitySlider.MouseUp += (s, e) => { isDraggingSlider = false; };
+            this.Controls.Add(this.opacitySlider);
             
             // WebView2
             this.webView2 = new WebView2();
@@ -82,6 +104,29 @@ namespace AnswerITReflector
                     // Use temp folder for WebView2 data
                     var env = await CoreWebView2Environment.CreateAsync(null, tempWebViewFolder);
                     await webView2.EnsureCoreWebView2Async(env);
+                    
+                    // Disable tooltips via JavaScript injection
+                    webView2.CoreWebView2.NavigationCompleted += (s, e) => {
+                        // Remove all existing title attributes
+                        webView2.CoreWebView2.ExecuteScriptAsync("[...document.querySelectorAll('[title]')].forEach(e=>e.removeAttribute('title'))");
+                        // Prevent new tooltips from being set
+                        webView2.CoreWebView2.ExecuteScriptAsync(@"
+                            new MutationObserver(muts => {
+                                muts.forEach(mut => {
+                                    if (mut.type === 'attributes' && mut.attributeName === 'title') {
+                                        mut.target.removeAttribute('title');
+                                    }
+                                });
+                            }).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['title'] });
+                        ");
+                        // Inject CSS to set cursor to default everywhere
+                        webView2.CoreWebView2.ExecuteScriptAsync(@"
+                            var style = document.createElement('style');
+                            style.innerHTML = '* { cursor: default !important; }';
+                            document.head.appendChild(style);
+                        ");
+                    };
+                    
                     webView2.CoreWebView2.Navigate("https://nytlyt512.github.io/AnswerIT/reflector.html");
                     ApplyStealth();
                 } catch (Exception ex) {
@@ -90,6 +135,14 @@ namespace AnswerITReflector
             };
             
             this.ResumeLayout(false);
+        }
+
+        private void UpdateSlider(int mouseX)
+        {
+            // Calculate value from mouse position (5-99 range)
+            sliderValue = Math.Max(5, Math.Min(99, 5 + (mouseX * 94) / (opacitySlider.Width - 4)));
+            this.Opacity = sliderValue / 100.0;
+            opacitySlider.Invalidate(); // Redraw slider
         }
 
         private void ApplyStealth()
@@ -105,6 +158,10 @@ namespace AnswerITReflector
                 SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
                 this.ShowInTaskbar = false;
                 
+                // Enable dark titlebar
+                int darkMode = 1;
+                DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+                
                 // Hide from screenshare and disable DWM transitions
                 int value = 1;
                 DwmSetWindowAttribute(handle, DWMWA_EXCLUDED_FROM_PEEK, ref value, sizeof(int));
@@ -112,6 +169,11 @@ namespace AnswerITReflector
                 SetWindowDisplayAffinity(handle, WDA_EXCLUDEFROMCAPTURE);
             }
             catch { }
+        }
+
+        protected override bool ShowWithoutActivation 
+        { 
+            get { return true; } 
         }
 
         protected override void OnHandleCreated(EventArgs e)
