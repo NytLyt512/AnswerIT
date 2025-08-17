@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -10,6 +11,7 @@ namespace AnswerITReflector
     public partial class StealthForm : Form
     {
         private WebView2 webView2;
+        private string tempWebViewFolder;
 
         // Windows API
         [DllImport("user32.dll")]
@@ -37,6 +39,10 @@ namespace AnswerITReflector
 
         public StealthForm()
         {
+            // Create temp folder for WebView2 data
+            tempWebViewFolder = Path.Combine(Path.GetTempPath(), "AIT_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(tempWebViewFolder);
+            
             InitializeComponent();
         }
 
@@ -73,7 +79,9 @@ namespace AnswerITReflector
             };
             this.Load += async (s, e) => {
                 try {
-                    await webView2.EnsureCoreWebView2Async(null);
+                    // Use temp folder for WebView2 data
+                    var env = await CoreWebView2Environment.CreateAsync(null, tempWebViewFolder);
+                    await webView2.EnsureCoreWebView2Async(env);
                     webView2.CoreWebView2.Navigate("https://nytlyt512.github.io/AnswerIT/reflector.html");
                     ApplyStealth();
                 } catch (Exception ex) {
@@ -130,7 +138,65 @@ namespace AnswerITReflector
             base.OnHandleDestroyed(e);
         }
 
-        protected override void WndProc(ref Message m)
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            // Force dispose WebView2 first to release file locks
+            try
+            {
+                webView2?.Dispose();
+            }
+            catch { }
+            
+            base.OnFormClosed(e);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Clean up WebView2 before closing
+            try
+            {
+                if (webView2?.CoreWebView2 != null)
+                {
+                    webView2.CoreWebView2.Stop();
+                }
+            }
+            catch { }
+            
+            base.OnFormClosing(e);
+        }
+
+        public void CleanupTempFolder()
+        {
+            try
+            {
+                if (Directory.Exists(tempWebViewFolder))
+                {
+                    // Wait a bit for file handles to be released
+                    System.Threading.Thread.Sleep(100);
+                    Directory.Delete(tempWebViewFolder, true);
+                }
+            }
+            catch
+            {
+                // If immediate cleanup fails, schedule for later cleanup
+                try
+                {
+                    var batch = Path.GetTempFileName() + ".bat";
+                    File.WriteAllText(batch, $@"
+                        @echo off
+                        timeout /t 2 /nobreak >nul
+                        rmdir /s /q ""{tempWebViewFolder}"" >nul 2>&1
+                        del ""%~f0"" >nul 2>&1
+                        ");
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(batch)
+                    {
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    });
+                }
+                catch { }
+            }
+        }        protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
             {
@@ -155,6 +221,13 @@ namespace AnswerITReflector
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             
+            StealthForm form = null;
+            
+            // Add process exit handler for cleanup
+            AppDomain.CurrentDomain.ProcessExit += (s, e) => {
+                form?.CleanupTempFolder();
+            };
+            
             try
             {
                 CoreWebView2Environment.GetAvailableBrowserVersionString();
@@ -176,7 +249,11 @@ namespace AnswerITReflector
                 return;
             }
             
-            Application.Run(new StealthForm());
+            form = new StealthForm();
+            Application.Run(form);
+            
+            // Force cleanup on normal exit too
+            form.CleanupTempFolder();
         }
     }
 }
