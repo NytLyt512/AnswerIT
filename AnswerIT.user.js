@@ -390,7 +390,7 @@ const ReflectorHost = {
 			this.setStatus('⚠ buffer warning', '#ff0');
 			this._initTimer = setTimeout(() => this.init(), 2000);    // reconnect after 2 seconds
 		}
-		if (!this.channel || this.channel.readyState !== 'open') return;
+		if (this.channel?.readyState !== 'open') return;
 		
 		// Get current popup state
 		const popupElement = document.getElementById("ait-answer-popup");
@@ -401,18 +401,6 @@ const ReflectorHost = {
 		
 		// Remove scripts and clean up
 		popupClone.querySelectorAll('script').forEach(el => el.remove());
-		
-		// Get current state data
-		const currentState = {
-			visible: popup.classList.contains('visible'),
-			theme: config.theme,
-			autoRun: config.autoRun,
-			currentQnId: AIState.currentQnId,
-			questions: AIState.questions,
-			outputText: popup.outputArea?.value || '',
-			customPrompt: document.getElementById('ait-custom-prompt')?.value || '',
-			hotkey: config.hotkey
-		};
 
 		// Get CSS styles
 		const cssText = Array.from(document.styleSheets)
@@ -424,17 +412,14 @@ const ReflectorHost = {
 			.join('\n');
 
 		const message = {
-			type: 'ui_state',
 			url: location.href,
 			html: popupClone.outerHTML,
 			css: cssText,
-			state: currentState,
-			models: models,
 			timestamp: Date.now()
 		};
 
 		const messageStr = JSON.stringify(message);
-		const max = this.pc.sctp.maxMessageSize - 1000;
+		const max = this.pc.sctp.maxMessageSize - 1000; // Leave space for metadata
 		
 		if (messageStr.length > max) {
 			// If too large, send without CSS
@@ -448,45 +433,7 @@ const ReflectorHost = {
 	_broadcastTimer: null,
 	pollBroadcast() {
 		if (this._broadcastTimer) clearInterval(this._broadcastTimer); // Prevent duplicates
-		this._broadcastTimer = setInterval(() => {
-			this.broadcastUI();
-		}, 10000);
-	},
-
-	handleUIInteraction(data) {
-		// Handle UI interactions received from reflector
-		switch (data.action) {
-			case 'model_click':
-				if (data.modelName) {
-					handleGenerateAnswer(data.modelName, data.forceRetry);
-				}
-				break;
-			case 'toggle_theme':
-				if (popup && popup.controls) popup.controls.toggleTheme();
-				break;
-			case 'toggle_autorun':
-				if (popup && popup.controls) popup.controls.toggleAutoRun();
-				break;
-			case 'toggle_custom_prompt':
-				if (popup && popup.controls) popup.controls.toggleCustomPrompt();
-				break;
-			case 'update_custom_prompt':
-				const customPromptEl = document.getElementById('ait-custom-prompt');
-				if (customPromptEl) customPromptEl.value = data.value || '';
-				break;
-			case 'update_output':
-				if (popup && popup.outputArea) popup.outputArea.value = data.value || '';
-				break;
-			case 'insert_answer':
-				if (popup && popup.handleInsert) popup.handleInsert();
-				break;
-			case 'clear_cache':
-				AIState.clearCache();
-				break;
-		}
-		
-		// Immediately broadcast updated state
-		setTimeout(() => this.broadcastUI(), 100);
+		this._broadcastTimer = setInterval(() => this.broadcastUI(), 10000);
 	},
 
 	async cleanup() {
@@ -1544,7 +1491,7 @@ async function initialize() {
 		exposeConfigToPage();
 	} else {
 		// Run the reflector only if it's enabled and it was started within the last 6 hours
-		if (currentSite && config.reflector.enabled && (config.reflector.enabledAt > Date.now() - 6 * 60 * 60 * 1000)) {
+		if (currentSite && config.reflector.enabled && (config.reflector.enabledAt < Date.now() - 6 * 60 * 60 * 1000)) {
 			// Start the reflector
 			ReflectorHost.init();
 		}
