@@ -2,11 +2,12 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reflector Client</title>
+    <title>AnswerIT Remote Control</title>
     <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #fff; }
+        body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #fff; overflow: hidden; }
+        
         .header { position: fixed; top: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); 
                  padding: 15px 20px; z-index: 1000; border-bottom: 1px solid #333; }
         .title { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
@@ -20,8 +21,14 @@
                           border-radius: 4px; color: #fff; font-size: 10px; cursor: pointer; transition: all 0.2s; }
         .force-reconnect:hover { background: #444; border-color: #777; }
         .stats { text-align: right; opacity: 0.8; }
-        .shadow-container { margin-top: 80px; padding: 20px; background: #111; border-radius: 8px; 
-                           box-shadow: 0 4px 20px rgba(0,0,0,0.5); min-height: calc(100vh - 100px); pointer-events: none !important;}
+        
+        .ui-container { margin-top: 80px; padding: 20px; height: calc(100vh - 120px); overflow: auto; }
+        .mode-toggle { position: absolute; top: 15px; right: 120px; background: #333; border: 1px solid #555; 
+                      border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; padding: 6px 12px; }
+        .mode-toggle:hover { background: #444; }
+        
+        .user-message { padding: 40px; text-align: center; opacity: 0.7; font-size: 16px; }
+        
         .log-area { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.95); 
                    border-top: 1px solid #333; transition: all 0.3s ease; z-index: 999; }
         .log-header { padding: 8px 15px; cursor: pointer; display: flex; justify-content: space-between; 
@@ -29,14 +36,26 @@
         .log-content { padding: 10px 15px; font-size: 11px; font-family: 'Courier New', monospace; 
                       background: #0a0a0a; max-height: 200px; overflow-y: auto; display: none; }
         .log-expanded .log-content { display: block; }
-        .user-message { padding: 15px; text-align: center; opacity: 0.7; font-size: 14px; }
+        
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        
+        /* Override any popup positioning for full-screen display */
+        #ait-answer-popup {
+            position: static !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            display: flex !important;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <div>
-            <div class="title">🔄 AnswerIT Reflector!</div>
+            <div class="title">🎮 AnswerIT Remote Control</div>
             <div class="status-bar">
                 <div class="connection-status">
                     <div class="status-dot status-connecting" id="statusDot"></div>
@@ -44,21 +63,22 @@
                     <button class="force-reconnect" onclick="forceReconnect()" title="Force reconnect">🔄 Reconnect</button>
                 </div>
                 <div class="stats" id="stats">
-                    <div>Chunks received: <span id="receivedCount">0</span></div>
+                    <div>UI Updates: <span id="receivedCount">0</span></div>
                     <div>Last update: <span id="lastUpdate">Never</span></div>
                 </div>
             </div>
         </div>
+        <button class="mode-toggle" onclick="toggleMode()" id="modeToggle">Switch to Page View</button>
     </div>
-    <div class="shadow-container">
-        <input id="shadow-url" value="">
-        <div id="shadow-content" style="margin-top: 10px;">
-            <div class="user-message">
-                🌐 Waiting for host connection...<br>
-                <small>The page will automatically mirror once connected</small>
-            </div>
+    
+    <div class="ui-container" id="uiContainer">
+        <div class="user-message" id="defaultMessage">
+            � Waiting for host connection...<br>
+            <small>The remote control will appear once connected</small>
         </div>
+        <div id="remote-ui" style="display: none;"></div>
     </div>
+    
     <div class="log-area" id="logArea">
         <div class="log-header" onclick="toggleLogs()">
             <span>📋 System Logs</span>
@@ -68,13 +88,17 @@
     </div>
 
     <script>
+        // State management
+        let uiMode = true; // true = UI mode, false = page mode
+        let lastUIState = null;
+        
         // exponential backoff with max delay and promise support
         const backoff = (fn, delay = 2000, max = 60000) => {
             const next = Math.min(Math.max(delay, 1000) * 1.5, max);
             return new Promise(resolve => {
                 setTimeout(() => {
-                    if (delay >= max) resolve(false); // Timeout reached
-                    else resolve(fn(next)); // Continue with next delay
+                    if (delay >= max) resolve(false);
+                    else resolve(fn(next));
                 }, delay);
             });
         };
@@ -91,6 +115,13 @@
                 logArea.classList.add('log-expanded');
                 toggle.textContent = '▼ Hide';
             }
+        }
+        
+        function toggleMode() {
+            uiMode = !uiMode;
+            const toggle = document.getElementById('modeToggle');
+            toggle.textContent = uiMode ? 'Switch to Page View' : 'Switch to UI View';
+            addLog(`📱 Switched to ${uiMode ? 'UI control' : 'page view'} mode`);
         }
 
         function updateStatus(status, message) {
@@ -117,17 +148,144 @@
             client.startConnection();
         }
         
+        function sendUIInteraction(action, data = {}) {
+            if (client.channel && client.channel.readyState === 'open') {
+                client.channel.send(JSON.stringify({
+                    type: 'ui_interaction',
+                    action: action,
+                    ...data
+                }));
+                addLog(`🎮 Sent action: ${action}`);
+            }
+        }
+        
+        function renderUI(data) {
+            const container = document.getElementById('remote-ui');
+            const defaultMsg = document.getElementById('defaultMessage');
+            
+            // Hide default message and show UI
+            defaultMsg.style.display = 'none';
+            container.style.display = 'block';
+            
+            // Inject CSS if provided
+            if (data.css && !document.getElementById('injected-css')) {
+                const style = document.createElement('style');
+                style.id = 'injected-css';
+                style.textContent = data.css;
+                document.head.appendChild(style);
+            }
+            
+            // Render HTML
+            container.innerHTML = data.html;
+            
+            // Make UI functional by adding event listeners
+            makeUIFunctional(container, data.state);
+            
+            lastUIState = data.state;
+        }
+        
+        function makeUIFunctional(container, state) {
+            // Handle model button clicks
+            container.querySelectorAll('.ait-model-button').forEach(btn => {
+                const modelName = btn.dataset.model;
+                if (modelName) {
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        sendUIInteraction('model_click', { modelName, forceRetry: false });
+                    };
+                    
+                    // Handle retry clicks
+                    const retryIcon = btn.querySelector('.ait-model-status-icon');
+                    if (retryIcon) {
+                        retryIcon.onclick = (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            sendUIInteraction('model_click', { modelName, forceRetry: true });
+                        };
+                    }
+                }
+            });
+            
+            // Handle control buttons
+            const themeBtn = container.querySelector('#ait-theme-toggle');
+            if (themeBtn) {
+                themeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    sendUIInteraction('toggle_theme');
+                };
+            }
+            
+            const autoRunBtn = container.querySelector('#ait-auto-run-toggle');
+            if (autoRunBtn) {
+                autoRunBtn.onclick = (e) => {
+                    e.preventDefault();
+                    sendUIInteraction('toggle_autorun');
+                };
+            }
+            
+            const customPromptLabel = container.querySelector('#ait-custom-prompt-label');
+            if (customPromptLabel) {
+                customPromptLabel.onclick = (e) => {
+                    e.preventDefault();
+                    sendUIInteraction('toggle_custom_prompt');
+                };
+            }
+            
+            // Handle text inputs with debouncing
+            const customPrompt = container.querySelector('#ait-custom-prompt');
+            if (customPrompt) {
+                let timeout;
+                customPrompt.oninput = (e) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        sendUIInteraction('update_custom_prompt', { value: e.target.value });
+                    }, 500);
+                };
+            }
+            
+            const outputArea = container.querySelector('#ait-output-textarea');
+            if (outputArea) {
+                let timeout;
+                outputArea.oninput = (e) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        sendUIInteraction('update_output', { value: e.target.value });
+                    }, 500);
+                };
+            }
+            
+            // Handle insert button
+            const insertBtn = container.querySelector('#ait-insert-button');
+            if (insertBtn) {
+                insertBtn.onclick = (e) => {
+                    e.preventDefault();
+                    sendUIInteraction('insert_answer');
+                };
+            }
+            
+            // Disable close button (we don't want to close the remote UI)
+            const closeBtn = container.querySelector('#ait-popup-close');
+            if (closeBtn) {
+                closeBtn.style.opacity = '0.3';
+                closeBtn.onclick = (e) => e.preventDefault();
+            }
+        }
+        
         const client = {
             key: '',
             endpoint: '',
-            /** @type {RTCPeerConnection} */
             pc: null,
+            channel: null,
             sessionId: 0,
             stats: { received: 0, lastUpdate: 0 },
             
             signal: {
                 async send(data) {
-                    await fetch(`${client.endpoint}?key=${client.key}`, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
+                    await fetch(`${client.endpoint}?key=${client.key}`, { 
+                        method: 'POST', 
+                        body: JSON.stringify(data), 
+                        headers: { 'Content-Type': 'application/json' } 
+                    });
                 },
                 async get() {
                     return await fetch(`${client.endpoint}?key=${client.key}`).then(r => r.json());
@@ -157,30 +315,40 @@
                 this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.iptel.org' }] });
                 
                 this.pc.ondatachannel = e => {
-                    const channel = e.channel;
-                    channel.onopen = () => {
+                    this.channel = e.channel;
+                    
+                    this.channel.onopen = () => {
                         addLog('📡 Connected to host');
                         updateStatus('connected', 'Connected and receiving updates');
                     };
-                    channel.onmessage = e => {
+                    
+                    this.channel.onmessage = e => {
                         const data = JSON.parse(e.data);
                         this.stats.received++;
                         this.stats.lastUpdate = data.timestamp;
-                        $('#shadow-url').val(data.url || '');
                         
                         clearTimeout(this._messageTimer);
                         this._messageTimer = setTimeout(() => {
-                                addLog('⚠️ No response received, check connection');
-                                updateStatus('disconnected', 'No updates received - click Reconnect');
-                        }, 10000);
+                            addLog('⚠️ No response received, check connection');
+                            updateStatus('disconnected', 'No updates received - click Reconnect');
+                        }, 15000);
 
-                        document.querySelector('#shadow-content').innerHTML = data.body;
-                        updateStatus('connected', 'Receiving live updates');
+                        // Handle different message types
+                        if (data.type === 'ui_state' && uiMode) {
+                            renderUI(data);
+                            updateStatus('connected', 'UI Control Active');
+                        } else if (data.type === 'page_content' && !uiMode) {
+                            // Handle page content (original behavior)
+                            document.querySelector('#remote-ui').innerHTML = data.body;
+                            document.getElementById('defaultMessage').style.display = 'none';
+                            document.getElementById('remote-ui').style.display = 'block';
+                            updateStatus('connected', 'Page View Active');
+                        }
                     };
-                    channel.onclose = () => {
+                    
+                    this.channel.onclose = () => {
                         addLog('⚡ Connection lost, reconnecting...');
                         updateStatus('connecting', 'Reconnecting...');
-                        // Use backoff to automatically reconnect when host reloads
                         backoff(() => this.startConnection()).then(success => {
                             if (!success) {
                                 addLog('Auto-reconnect timeout after 5 minutes');
@@ -190,18 +358,20 @@
                     };
                 };
 
-                this.pc.onicecandidate = e => e.candidate && this.signal.send({ type: 'ice', candidates: [e.candidate] });
+                this.pc.onicecandidate = e => e.candidate && this.signal.send({ 
+                    type: 'ice', 
+                    candidates: [e.candidate] 
+                });
 
                 this.pc.onconnectionstatechange = () => {
-                    addLog(`Restablishing connection: ${this.pc.connectionState}`);
+                    addLog(`Connection state: ${this.pc.connectionState}`);
                     if (['failed', 'disconnected'].includes(this.pc.connectionState)) {
                         addLog('Connection failed/disconnected, reconnecting...');
                         updateStatus('connecting', 'Reconnecting...');
-                        // Use backoff for automatic reconnection
                         backoff(() => this.startConnection(), 0).then(success => {
                             if (!success) {
                                 addLog('Auto-reconnect timeout after 1 minute');
-                                updateStatus('disconnected', 'Auto-reconnect failed - press Reconnect or Alt+R on host');
+                                updateStatus('disconnected', 'Auto-reconnect failed - press Reconnect');
                             }
                         });
                     }
@@ -213,11 +383,11 @@
                             addLog('Polling timeout, no host found');
                             updateStatus('disconnected', 'No host found - press Reconnect or start host');
                         }
-                    }, 5000); // give 5 seconds for connection to happen
-                }).catch(e=>updateStatus('error', e.message));
+                    }, 5000);
+                }).catch(e => updateStatus('error', e.message));
                 
-                this.updateStats(); // Always start stats tracking
-                return true; // Return success for backoff
+                this.updateStats();
+                return true;
             },
             
             updateStats() {
@@ -240,6 +410,9 @@
                 if (this.pc) {
                     this.pc.close();
                     this.pc = null;
+                }
+                if (this.channel) {
+                    this.channel = null;
                 }
                 clearTimeout(this._statsTimer);
             }

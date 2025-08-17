@@ -384,28 +384,109 @@ const ReflectorHost = {
 		});
 	},
 
-	broadcast(element) {
-		if (!element || !this.channel) return;
+	broadcastUI() {
+		if (!this.channel) return;
 		if (this.channel?.bufferedAmount > 128 * 1024) {    // clients are probably not available
 			this.setStatus('⚠ buffer warning', '#ff0');
 			this._initTimer = setTimeout(() => this.init(), 2000);    // reconnect after 2 seconds
 		}
-		if (this.channel?.readyState === 'open') {
-			element.querySelectorAll('script, style, meta, link, noscript').forEach(el => el.remove());
-			const max = this.pc.sctp.maxMessageSize - 1000; // Leave space for metadata
+		if (!this.channel || this.channel.readyState !== 'open') return;
+		
+		// Get current popup state
+		const popupElement = document.getElementById("ait-answer-popup");
+		if (!popupElement) return;
 
-			this.channel.send(JSON.stringify({
-				url: location.href,
-				body: element.innerHTML.slice(0, max) + (element.innerHTML.length > max ? '<!-- truncated --!>' : ''),
-				timestamp: Date.now()
-			}));
+		// Clone the popup to avoid modifying the original
+		const popupClone = popupElement.cloneNode(true);
+		
+		// Remove scripts and clean up
+		popupClone.querySelectorAll('script').forEach(el => el.remove());
+		
+		// Get current state data
+		const currentState = {
+			visible: popup.classList.contains('visible'),
+			theme: config.theme,
+			autoRun: config.autoRun,
+			currentQnId: AIState.currentQnId,
+			questions: AIState.questions,
+			outputText: popup.outputArea?.value || '',
+			customPrompt: document.getElementById('ait-custom-prompt')?.value || '',
+			hotkey: config.hotkey
+		};
+
+		// Get CSS styles
+		const cssText = Array.from(document.styleSheets)
+			.map(sheet => {
+				try {
+					return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+				} catch { return ''; }
+			})
+			.join('\n');
+
+		const message = {
+			type: 'ui_state',
+			url: location.href,
+			html: popupClone.outerHTML,
+			css: cssText,
+			state: currentState,
+			models: models,
+			timestamp: Date.now()
+		};
+
+		const messageStr = JSON.stringify(message);
+		const max = this.pc.sctp.maxMessageSize - 1000;
+		
+		if (messageStr.length > max) {
+			// If too large, send without CSS
+			message.css = '/* CSS truncated due to size */';
+			this.channel.send(JSON.stringify(message).slice(0, max));
+		} else {
+			this.channel.send(messageStr);
 		}
 	},
 
 	_broadcastTimer: null,
 	pollBroadcast() {
 		if (this._broadcastTimer) clearInterval(this._broadcastTimer); // Prevent duplicates
-		this._broadcastTimer = setInterval(() => this.broadcast(page.getQnElm()), 10000);
+		this._broadcastTimer = setInterval(() => {
+			this.broadcastUI();
+		}, 10000);
+	},
+
+	handleUIInteraction(data) {
+		// Handle UI interactions received from reflector
+		switch (data.action) {
+			case 'model_click':
+				if (data.modelName) {
+					handleGenerateAnswer(data.modelName, data.forceRetry);
+				}
+				break;
+			case 'toggle_theme':
+				if (popup && popup.controls) popup.controls.toggleTheme();
+				break;
+			case 'toggle_autorun':
+				if (popup && popup.controls) popup.controls.toggleAutoRun();
+				break;
+			case 'toggle_custom_prompt':
+				if (popup && popup.controls) popup.controls.toggleCustomPrompt();
+				break;
+			case 'update_custom_prompt':
+				const customPromptEl = document.getElementById('ait-custom-prompt');
+				if (customPromptEl) customPromptEl.value = data.value || '';
+				break;
+			case 'update_output':
+				if (popup && popup.outputArea) popup.outputArea.value = data.value || '';
+				break;
+			case 'insert_answer':
+				if (popup && popup.handleInsert) popup.handleInsert();
+				break;
+			case 'clear_cache':
+				AIState.clearCache();
+				break;
+		}
+		
+		// Immediately broadcast updated state
+		setTimeout(() => this.broadcastUI(), 100);
 	},
 
 	async cleanup() {
@@ -738,7 +819,7 @@ const AIState = {
 		}
 
 		this.updateUI();
-		ReflectorHost.broadcast(page.getQnElm());
+		ReflectorHost.broadcastUI();
 	},
 
 	// Generate answer with specified model
@@ -1488,6 +1569,12 @@ async function initialize() {
 
 			attempts++;
 			createPopupUI();
+
+			// Hide popup if reflector UI broadcasting is enabled
+			if (config.reflector.enabled) {
+				popup.style.display = 'none';
+				console.debug("[AnswerIT] Popup hidden - using reflector UI broadcasting");
+			}
 
 			// Verify popup was created successfully
 			if (!document.getElementById("ait-answer-popup") && attempts < maxAttempts) {
