@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnswerIT - Universal Tab Switch + Screenshare Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
-// @version      4.1.0
+// @version      4.1.1
 // @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
 // @match		 https://NytLyt512.github.io/AnswerIT/*
@@ -676,7 +676,7 @@ const AIState = {
 
 	// Update UI based on current state
 	updateUI() {
-		if (!popup.classList.contains('visible') && ReflectorHost.pc.connectionState !== 'connected') return;
+		if (!popup.classList.contains('visible') && ReflectorHost.pc?.connectionState !== 'connected') return;
 
 		const qnId = this.currentQnId;
 		if (!qnId) return;
@@ -760,7 +760,9 @@ const AIState = {
 		}
 
 		this.updateUI();
-		ReflectorHost.broadcastUI();
+		if (ReflectorHost.pc?.connectionState === 'connected') {
+			ReflectorHost.broadcastUI();
+		}
 	},
 
 	// Generate answer with specified model
@@ -1215,7 +1217,7 @@ function createPopupUI() {
 
 	// Poll for question changes every 200ms to update UI state
 	setInterval(() => {
-		if (config.popupState.visible || ReflectorHost.pc.connectionState === 'connected') {
+		if (config.popupState.visible || ReflectorHost.pc?.connectionState === 'connected') {
 			handleUpdateUIStates();
 		}
 	}, 200);
@@ -1480,6 +1482,9 @@ function exposeConfigToPage() {
 async function initialize() {
 	await detectCurrentWebsite();
 
+	// Run detection bypass
+	setupDetectionBypass();
+
 	// Expose config for integration page
 	if (isScriptPage.configure || isScriptPage.reflector) {
 		exposeConfigToPage();
@@ -1491,9 +1496,6 @@ async function initialize() {
 			ReflectorHost.init();
 		}
 	}
-
-	// Run detection bypass
-	setupDetectionBypass();
 
 	// Ensure popup starts hidden by default on script initialization
 	config.popupState.visible = false;
