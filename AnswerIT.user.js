@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnswerIT - Universal Tab Switch + Screenshare Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
-// @version      4.2.0
+// @version      4.2.1
 // @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
 // @match		 https://NytLyt512.github.io/AnswerIT/*
@@ -452,9 +452,9 @@ unsafeWindow.host = ReflectorHost;
 
 // --- AI Providers ---
 const AIProviders = {
-	SYSTEM_INSTRUCTION: "You are an expert assistant helping with academic questions and coding problems. Analyze the provided content carefully and provide the most accurate answer.\nNote that the content can sometimes contain html that was directly extracted from the exam page so account that into consideration.\n\nContent Analysis:\n- If this is a multiple choice question, identify all options and select the correct one\n- If this is a coding question, provide complete, working, error-free code in the desired language\n- If this contains current code in the editor, build upon or fix that code as needed\n- If this is a theoretical or puzzle-like question, provide clear reasoning and explanation\n\nResponse Format:\n- For multiple choice: Provide reasoning, then clearly state \"Answer: [number] - [option text]\"\n- For coding: Provide the complete solution with brief explanation without any comments exactly in the format \"The Complete Code is:\n```[language]\n[Code]```\"\n- For other questions: Give concise but thorough explanations, then clearly state \"Short Answer: []\"\n- Format text clearly for textarea display (no markdown)\n- If the question is unclear or missing context, ask for specific clarification\n\nAlways prioritize accuracy over speed. Think through the problem step-by-step before providing your final answer.",
+	_SYSTEM_INSTRUCTION: "You are an expert assistant helping with academic questions and coding problems. Analyze the provided content carefully and provide the most accurate answer.\nNote that the content can sometimes contain html that was directly extracted from the exam page so account that into consideration.\n\nContent Analysis:\n- If this is a multiple choice question, identify all options and select the correct one\n- If this is a coding question, provide complete, working, error-free code in the desired language\n- If this contains current code in the editor, build upon or fix that code as needed\n- If this is a theoretical or puzzle-like question, provide clear reasoning and explanation\n\nResponse Format:\n- For multiple choice: Provide reasoning, then clearly state \"Answer: [number] - [option text]\"\n- For coding: Provide the complete solution with brief explanation without any comments exactly in the format \"The Complete Code is:\n```[language]\n[Code]```\"\n- For other questions: Give concise but thorough explanations, then clearly state \"Short Answer: []\"\n- Format text clearly for textarea display (no markdown)\n- If the question is unclear or missing context, ask for specific clarification\n\nAlways prioritize accuracy over speed. Think through the problem step-by-step before providing your final answer.",
 
-	async ContentParser(questionItem, formatImage) {
+	async _ContentParser(questionItem, formatImage) {
 		let contentParts = [], html = questionItem, lastIndex = 0;
 		const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
 		let match;
@@ -539,12 +539,12 @@ const AIProviders = {
 
 	gemini: {
 		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ inline_data: { mime_type: img.mimeType, data: img.data } }));
+			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ inline_data: { mime_type: img.mimeType, data: img.data } }));
 			try {
 				return await AIProviders._BaseProvider.streamRequest(
 					`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${apiKey}&alt=sse`,
 					{ "Content-Type": "application/json" },
-					{ system_instruction: { parts: { text: AIProviders.SYSTEM_INSTRUCTION } }, contents: [{ parts: contentParts }], generationConfig: model?.generationConfig || {} },
+					{ system_instruction: { parts: { text: AIProviders._SYSTEM_INSTRUCTION } }, contents: [{ parts: contentParts }], generationConfig: model?.generationConfig || {} },
 					onProgress,
 					(data) => data.candidates?.[0]?.content?.parts?.[0]?.text
 				);
@@ -556,17 +556,18 @@ const AIProviders = {
 				}
 				throw error;
 			}
-		}
+		},
+		page: 'https://aistudio.google.com/app/apikeys',
 	},
 
 	openai: {
 		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
 			try {
 				return await AIProviders._BaseProvider.streamRequest(
 					"https://api.openai.com/v1/chat/completions",
 					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
 					onProgress,
 					(data) => data.choices?.[0]?.delta?.content,
 					(line) => line.includes("[DONE]")
@@ -579,40 +580,42 @@ const AIProviders = {
 				}
 				throw error;
 			}
-		}
+		},
+		page: 'https://platform.openai.com/api-keys',
 	},
 
 	openrouter: {
 		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
 			try {
 				return await AIProviders._BaseProvider.streamRequest(
 					"https://openrouter.ai/api/v1/chat/completions",
 					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
 					onProgress,
 					(data) => data.choices?.[0]?.delta?.content,
 					(line) => line.includes("[DONE]")
 				);
 			} catch (error) {
 				if (error.message.includes("401") || error.message.includes("Invalid")) {
-					delete config.apiKeys.openai;
+					delete config.apiKeys.openrouter;
 					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Invalid OpenAI API key.");
+					throw new Error("API Key Error: Invalid OpenRouter API key.");
 				}
 				throw error;
 			}
-		}
+		},
+		page: 'https://openrouter.ai/api-keys',
 	},
 
 	groq: {
 		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
 			try {
 				return await AIProviders._BaseProvider.streamRequest(
 					"https://api.groq.com/openai/v1/chat/completions",
 					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: JSON.stringify(contentParts.map(part => part.text ? { type: "text", text: part.text } : part)) }], stream: true },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: JSON.stringify(contentParts.map(part => part.text ? { type: "text", text: part.text } : part)) }], stream: true },
 					onProgress,
 					(data) => data.choices?.[0]?.delta?.content,
 					(line) => line.includes("[DONE]")
@@ -625,17 +628,18 @@ const AIProviders = {
 				}
 				throw error;
 			}
-		}
+		},
+		page: 'https://groq.com/api-keys',
 	},
 
 	anthropic: {
 		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image", source: { type: img.url.startsWith('http') ? "url" : "base64", ...(img.url.startsWith('http') ? { url: img.url } : { media_type: img.mimeType, data: img.data }) } }));
+			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image", source: { type: img.url.startsWith('http') ? "url" : "base64", ...(img.url.startsWith('http') ? { url: img.url } : { media_type: img.mimeType, data: img.data }) } }));
 			try {
 				return await AIProviders._BaseProvider.streamRequest(
 					"https://api.anthropic.com/v1/messages",
 					{ "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-					{ model: model.name, system: AIProviders.SYSTEM_INSTRUCTION, messages: [{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], max_tokens: 4096, stream: true },
+					{ model: model.name, system: AIProviders._SYSTEM_INSTRUCTION, messages: [{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], max_tokens: 4096, stream: true },
 					onProgress,
 					(data) => data.type === 'content_block_delta' && data.delta?.text
 				);
@@ -647,7 +651,8 @@ const AIProviders = {
 				}
 				throw error;
 			}
-		}
+		},
+		page: 'https://console.anthropic.com/settings/keys',
 	}
 };
 
@@ -1336,13 +1341,7 @@ function getApiKey(provider = 'gemini') {
 		return null; // User should configure via setup page
 	} else {
 		// Fallback to quick setup
-		const urls = {
-			gemini: "https://aistudio.google.com/app/apikey",
-			openai: "https://platform.openai.com/api-keys",
-			openrouter: "https://openrouter.ai/api-keys",
-			groq: "https://groq.com/api-keys",
-			anthropic: "https://console.anthropic.com/settings/keys"
-		};
+		const urls = Object.entries(AIProviders).reduce((d, [k, v]) => (!k.startsWith('_') ? {...d, [k]: v.page} : d), {});
 
 		const info = confirm(
 			`Quick Setup: An API key is a secret token that lets our service access the ${provider} API. Get one for FREE from ${urls[provider]}.\n\nClick OK if you already have an API key.\nClick Cancel to open the key creation page.`
@@ -1454,7 +1453,7 @@ async function detectCurrentWebsite() {
 }
 
 function changeApiKey() {
-	const providers = ['gemini', 'openai', 'openrouter', 'groq', 'anthropic'];
+	const providers = Object.keys(AIProviders).filter(k => !k.startsWith('_'));
 	const choice = prompt(`Which provider's API key would you like to change?\n\n${providers.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nEnter the number:`, '1');
 
 	const providerIndex = parseInt(choice) - 1;
