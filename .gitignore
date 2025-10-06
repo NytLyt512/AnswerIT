@@ -1,2 +1,4 @@
-bin/
-obj/
+**/bin/
+!**/bin/publish/
+!**/bin/publish/**
+**/obj/
