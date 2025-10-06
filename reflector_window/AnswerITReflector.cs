@@ -13,6 +13,8 @@ namespace AnswerITReflector
         private WebView2 webView2;
         private string tempWebViewFolder;
         private Panel opacitySlider;
+        private CheckBox noActivateCheckbox;
+        private TextBox addressBar;
         private int sliderValue = 80;
         private bool isDraggingSlider = false;
 
@@ -65,6 +67,62 @@ namespace AnswerITReflector
             this.ShowInTaskbar = false;
             this.Opacity = 0.8; // Default 80% opacity
             
+            // Address bar
+            this.addressBar = new TextBox();
+            this.addressBar.Size = new Size(this.Width - 270, 20);
+            this.addressBar.Location = new Point(10, 8);
+            this.addressBar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            this.addressBar.BackColor = Color.FromArgb(30, 30, 30);
+            this.addressBar.ForeColor = Color.White;
+            this.addressBar.BorderStyle = BorderStyle.FixedSingle;
+            this.addressBar.Text = "https://nytlyt512.github.io/AnswerIT/reflector.html";
+            this.addressBar.KeyDown += (s, e) => {
+                if (e.KeyCode == Keys.Enter) {
+                    e.Handled = true;
+                    string url = NormalizeUrl(addressBar.Text.Trim());
+                    addressBar.Text = url;
+                    webView2?.CoreWebView2?.Navigate(url);
+                }
+            };
+            var ctxMenu = new ContextMenuStrip();
+            ctxMenu.Items.Add("Paste && Go", null, (s, e) => {
+                if (Clipboard.ContainsText()) {
+                    string url = NormalizeUrl(Clipboard.GetText().Trim());
+                    addressBar.Text = url;
+                    webView2?.CoreWebView2?.Navigate(url);
+                }
+            });
+
+            // Helper to normalize URLs
+            string NormalizeUrl(string input) {
+                if (string.IsNullOrWhiteSpace(input)) return "about:blank";
+                if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && 
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                    return uri.ToString();
+
+                // If it looks like a domain (contains a dot, no spaces), add https://
+                if (input.Contains(".") && !input.Contains(" ")) {
+                    return "https://" + input;
+                }
+
+                // Otherwise, treat as search
+                string q = Uri.EscapeDataString(input);
+                return $"https://www.google.com/search?q={q}";
+            }
+            this.addressBar.ContextMenuStrip = ctxMenu;
+            this.Controls.Add(this.addressBar);
+            
+            // No-activate checkbox
+            this.noActivateCheckbox = new CheckBox();
+            this.noActivateCheckbox.Size = new Size(15, 15);
+            this.noActivateCheckbox.Location = new Point(this.Width - 140, 10);
+            this.noActivateCheckbox.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            this.noActivateCheckbox.BackColor = Color.Transparent;
+            this.noActivateCheckbox.ForeColor = Color.White;
+            this.noActivateCheckbox.Checked = false; // Default to no-activate
+            this.noActivateCheckbox.CheckedChanged += (s, e) => ApplyStealth();
+            this.Controls.Add(this.noActivateCheckbox);
+            
             // Custom opacity slider
             this.opacitySlider = new Panel();
             this.opacitySlider.Size = new Size(100, 5);
@@ -84,7 +142,9 @@ namespace AnswerITReflector
             
             // WebView2
             this.webView2 = new WebView2();
-            this.webView2.Dock = DockStyle.Fill;
+            this.webView2.Location = new Point(0, 35);
+            this.webView2.Size = new Size(this.Width, this.Height - 35);
+            this.webView2.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             this.Controls.Add(this.webView2);
             
             // Event handlers
@@ -107,6 +167,8 @@ namespace AnswerITReflector
                     
                     // Disable tooltips via JavaScript injection
                     webView2.CoreWebView2.NavigationCompleted += (s, e) => {
+                        // Update address bar on navigation
+                        addressBar.Text = webView2.CoreWebView2.Source;
                         // Remove all existing title attributes
                         webView2.CoreWebView2.ExecuteScriptAsync("[...document.querySelectorAll('[title]')].forEach(e=>e.removeAttribute('title'))");
                         // Prevent new tooltips from being set
@@ -155,7 +217,10 @@ namespace AnswerITReflector
 
                 // Hide from taskbar/Alt+Tab
                 int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
-                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+                int newStyle = exStyle | WS_EX_TOOLWINDOW;
+                if (noActivateCheckbox?.Checked == true)
+                    newStyle |= WS_EX_NOACTIVATE;
+                SetWindowLong(handle, GWL_EXSTYLE, newStyle);
                 this.ShowInTaskbar = false;
                 
                 // Enable dark titlebar

@@ -6,8 +6,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyTitle>AnswerIT Reflector</AssemblyTitle>
     <AssemblyDescription>Stealth reflector for AnswerIT</AssemblyDescription>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <Company>NytLyt512</Company>
     <Product>AnswerIT</Product>
     <ApplicationIcon>icon.ico</ApplicationIcon>
