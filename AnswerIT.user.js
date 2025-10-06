@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnswerIT - Universal Tab Switch + Screenshare Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
-// @version      4.1.1
+// @version      4.2.0
 // @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
 // @match		 https://NytLyt512.github.io/AnswerIT/*
@@ -27,6 +27,9 @@
 // @downloadURL  https://github.com/NytLyt512/AnswerIT/raw/refs/heads/main/AnswerIT.user.js
 // ==/UserScript==
 
+// to try running on generic/unsupported page, add the following custom @match rule:
+// @match        *://*/*
+
 // --- track last version to handle version incompatible changes ---
 if (GM_info.script.version > GM_getValue('script_version', '0')) {
 	GM_setValue('script_version', GM_info.script.version);
@@ -50,7 +53,7 @@ if (GM_info.script.version > GM_getValue('script_version', '0')) {
  * -----------------------------------
  */
 const config = {
-	/** @type {{ gemini: string, openai: string, anthropic: string, groq: string }} */
+	/** @type {{ gemini: string, openai: string, openrouter: string, groq: string, anthropic: string }} */
 	apiKeys: GM_getValue("apiKeys", {}),	// can add multiple by separating with commas
 
 	/** @type {{ key: string, modifier: string }} */
@@ -126,6 +129,13 @@ const websites = [
 			}
 			return element.textContent.trim();
 		},
+	},
+	{
+		name: "generic",
+		urls:[""],
+		questionSelectors: ['#main-content', '#root', 'body'],
+		getQuestionIdentifier: (e) => e.textContent.slice(0, 100).trim(),
+		getQuestionItem: (e) => e.innerHTML.length > 8000 ? e.textContent.trim() : e.innerHTML,
 	}
 ];
 
@@ -572,6 +582,29 @@ const AIProviders = {
 		}
 	},
 
+	openrouter: {
+		async call(model, questionItem, apiKey, onProgress) {
+			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+			try {
+				return await AIProviders._BaseProvider.streamRequest(
+					"https://openrouter.ai/api/v1/chat/completions",
+					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					onProgress,
+					(data) => data.choices?.[0]?.delta?.content,
+					(line) => line.includes("[DONE]")
+				);
+			} catch (error) {
+				if (error.message.includes("401") || error.message.includes("Invalid")) {
+					delete config.apiKeys.openai;
+					GM_setValue("apiKeys", config.apiKeys);
+					throw new Error("API Key Error: Invalid OpenAI API key.");
+				}
+				throw error;
+			}
+		}
+	},
+
 	groq: {
 		async call(model, questionItem, apiKey, onProgress) {
 			const contentParts = await AIProviders.ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
@@ -579,7 +612,7 @@ const AIProviders = {
 				return await AIProviders._BaseProvider.streamRequest(
 					"https://api.groq.com/openai/v1/chat/completions",
 					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
+					{ model: model.name, messages: [{ role: "system", content: AIProviders.SYSTEM_INSTRUCTION }, { role: "user", content: JSON.stringify(contentParts.map(part => part.text ? { type: "text", text: part.text } : part)) }], stream: true },
 					onProgress,
 					(data) => data.choices?.[0]?.delta?.content,
 					(line) => line.includes("[DONE]")
@@ -1306,6 +1339,8 @@ function getApiKey(provider = 'gemini') {
 		const urls = {
 			gemini: "https://aistudio.google.com/app/apikey",
 			openai: "https://platform.openai.com/api-keys",
+			openrouter: "https://openrouter.ai/api-keys",
+			groq: "https://groq.com/api-keys",
 			anthropic: "https://console.anthropic.com/settings/keys"
 		};
 
@@ -1419,7 +1454,7 @@ async function detectCurrentWebsite() {
 }
 
 function changeApiKey() {
-	const providers = ['gemini', 'openai', 'anthropic'];
+	const providers = ['gemini', 'openai', 'openrouter', 'groq', 'anthropic'];
 	const choice = prompt(`Which provider's API key would you like to change?\n\n${providers.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nEnter the number:`, '1');
 
 	const providerIndex = parseInt(choice) - 1;
