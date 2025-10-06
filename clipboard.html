@@ -36,6 +36,13 @@
         .model-btn:hover { background: var(--bg-tertiary); transform: translateY(-1px); }
         .model-btn.loading { opacity: 0.6; cursor: wait; }
         .model-name { font-weight: 600; font-size: 13px; }
+        .model-status { display: none; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; cursor: pointer; transition: all 0.2s; }
+        .model-btn.success .model-status { display: flex; background: var(--bg-tertiary); }
+        .model-status .success-icon { color: #4CAF50; font-size: 11px; font-weight: bold; }
+        .model-status .retry-icon { color: #ff9800; font-size: 11px; font-weight: bold; display: none; }
+        .model-status:hover { background: var(--border-color) !important; }
+        .model-status:hover .success-icon { display: none; }
+        .model-status:hover .retry-icon { display: inline; }
         .spinner { display: none; animation: spin 1s linear infinite; }
         .model-btn.loading .spinner { display: block; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -90,6 +97,57 @@
         const previewEl = document.getElementById('preview');
         const themeToggle = document.getElementById('theme-toggle');
 
+        // State management
+        const state = {
+            cache: JSON.parse(localStorage.getItem('clipboard-cache') || '{}'),
+            currentId: null,
+            buttons: {}
+        };
+
+        function hashCode(str) {
+            let h = 0xcbf29ce484222325n;
+            for (let i = 0; i < str.length; i++) {
+                h ^= BigInt(str.charCodeAt(i));
+                h *= 0x100000001b3n;
+                h &= 0x1fffffffffffffn;
+            }
+            return h.toString(16);
+        }
+
+        function getCache(id, model) {
+            return state.cache[id]?.models?.[model];
+        }
+
+        function setCache(id, model, data) {
+            if (!state.cache[id]) state.cache[id] = { models: {} };
+            if (!state.cache[id].models[model]) state.cache[id].models[model] = {};
+            Object.assign(state.cache[id].models[model], data);
+            localStorage.setItem('clipboard-cache', JSON.stringify(state.cache));
+        }
+
+        function updateButton(btn, status) {
+            btn.classList.remove('loading', 'success', 'error');
+            const spinner = btn.querySelector('.spinner');
+            const statusIcon = btn.querySelector('.model-status');
+            
+            if (spinner) spinner.style.display = 'none';
+            if (statusIcon) statusIcon.style.display = 'none';
+
+            switch (status) {
+                case 'loading':
+                    btn.classList.add('loading');
+                    if (spinner) spinner.style.display = 'block';
+                    break;
+                case 'success':
+                    btn.classList.add('success');
+                    if (statusIcon) statusIcon.style.display = 'flex';
+                    break;
+                case 'error':
+                    btn.classList.add('error');
+                    break;
+            }
+        }
+
         let isLight = localStorage.getItem('theme') === 'light';
         if (isLight) document.body.classList.add('light');
         themeToggle.textContent = isLight ? '☀️' : '🌙';
@@ -123,8 +181,22 @@
             btn.className = 'model-btn';
             btn.style.background = darkenColor(model.color);
             btn.style.color = '#e0e0e0';
-            btn.innerHTML = `<span class="model-name">${model.display}</span><span class="spinner">⠋</span>`;
-            btn.onclick = () => handleGenerate(model);
+            btn.innerHTML = `
+                <span class="model-name">${model.display}</span>
+                <span class="spinner">⠋</span>
+                <div class="model-status">
+                    <span class="success-icon">✔</span>
+                    <span class="retry-icon">↺</span>
+                </div>
+            `;
+            btn.onclick = (e) => {
+                if (e.target.closest('.model-status')) {
+                    handleGenerate(model, true); // Retry
+                } else {
+                    handleGenerate(model, false);
+                }
+            };
+            state.buttons[model.name] = btn;
             modelsEl.appendChild(btn);
         });
 
@@ -150,14 +222,26 @@
             return { type: 'text', data: text };
         }
 
-        async function handleGenerate(model) {
-            const btn = event.currentTarget;
-            btn.classList.add('loading');
+        async function handleGenerate(model, forceRetry = false) {
+            const btn = state.buttons[model.name];
+            const clipboard = await getClipboard();
+            const clipId = hashCode(clipboard.data + (clipboard.type || ''));
+            state.currentId = clipId;
+
+            // Check cache
+            const cached = getCache(clipId, model.name);
+            if (cached?.answer && !forceRetry) {
+                outputEl.value = cached.answer;
+                statusEl.textContent = cached.metadata || `Cached (${model.display})`;
+                updateButton(btn, 'success');
+                return;
+            }
+
+            updateButton(btn, 'loading');
             outputEl.value = '';
             statusEl.textContent = `Generating with ${model.display}...`;
 
             try {
-                const clipboard = await getClipboard();
                 let apiKey = apiKeys[model.provider];
                 
                 if (!apiKey) {
@@ -182,16 +266,22 @@
                 }
 
                 const start = Date.now();
-                const answer = await callAPI(model, content, apiKey, (partial) => outputEl.value = partial);
+                const answer = await callAPI(model, content, apiKey, (partial) => {
+                    outputEl.value = partial;
+                    setCache(clipId, model.name, { answer: partial });
+                });
                 
-                statusEl.textContent = `Complete (${Date.now() - start}ms)`;
+                const metadata = `Complete (${Date.now() - start}ms) - ${model.display}`;
+                statusEl.textContent = metadata;
                 outputEl.value = answer;
+                setCache(clipId, model.name, { answer, metadata, status: 'success' });
+                updateButton(btn, 'success');
             } catch (err) {
                 outputEl.value = err.stack || err;
                 statusEl.textContent = `Error: ${err.message.slice(0, 50)}`;
+                setCache(clipId, model.name, { status: 'error', answer: err.message });
+                updateButton(btn, 'error');
                 console.error(err);
-            } finally {
-                btn.classList.remove('loading');
             }
         }
 
