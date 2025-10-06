@@ -196,9 +196,6 @@
         }
 
         async function callAPI(model, content, key, onProgress) {
-            // const CORS = 'https://api.allorigins.win/raw?url=';
-            const CORS = 'https://corsproxy.io/?';
-            
             const apis = {
                 gemini: {
                     url: `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${key}&alt=sse`,
@@ -212,19 +209,19 @@
                     extract: (d) => d.choices?.[0]?.delta?.content
                 },
                 openrouter: {
-                    url: CORS + "https://api.openrouter.ai/v1/chat/completions",
+                    url: "https://openrouter.ai/api/v1/chat/completions",
                     headers: { "Authorization": `Bearer ${key}` },
                     body: { model: model.name, messages: [{ role: "user", content }], stream: true },
                     extract: (d) => d.choices?.[0]?.delta?.content
                 },
                 groq: {
-                    url: CORS + "https://api.groq.com/openai/v1/chat/completions",
+                    url: "https://api.groq.com/openai/v1/chat/completions",
                     headers: { "Authorization": `Bearer ${key}` },
                     body: { model: model.name, messages: [{ role: "user", content }], stream: true },
                     extract: (d) => d.choices?.[0]?.delta?.content
                 },
                 anthropic: {
-                    url: CORS + "https://api.anthropic.com/v1/messages",
+                    url: "https://api.anthropic.com/v1/messages",
                     headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
                     body: { model: model.name, messages: [{ role: "user", content }], max_tokens: 4096, stream: true },
                     extract: (d) => d.type === 'content_block_delta' && d.delta?.text
@@ -234,7 +231,7 @@
             const config = apis[model.provider];
             const res = await fetch(config.url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...config.headers },
+                headers: { 'Content-Type': 'application/json', ...config.headers },
                 body: JSON.stringify(config.body)
             });
 
