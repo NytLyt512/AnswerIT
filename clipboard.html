@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnswerIT Clipboard</title>
+    <style>
+        :root {
+            --bg-main: #1e1e1e;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3a3a3a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #aaa;
+            --border-color: #444;
+            --border-subtle: #333;
+        }
+        body.light {
+            --bg-main: #f5f5f5;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e8e8e8;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --border-color: #ddd;
+            --border-subtle: #ccc;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-main); color: var(--text-primary); padding: 20px; transition: all 0.3s; }
+        #container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        
+        #prompt-container { display: flex; gap: 10px; align-items: flex-start; }
+        #prompt-bar { flex: 1; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 14px; resize: vertical; min-height: 60px; }
+        
+        #models { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+        .model-btn { padding: 8px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; min-height: 32px; }
+        .model-btn:hover { background: var(--bg-tertiary); transform: translateY(-1px); }
+        .model-btn.loading { opacity: 0.6; cursor: wait; }
+        .model-name { font-weight: 600; font-size: 13px; }
+        .spinner { display: none; animation: spin 1s linear infinite; }
+        .model-btn.loading .spinner { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        #output { width: 100%; min-height: 300px; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-family: 'Consolas', monospace; font-size: 13px; resize: vertical; }
+        #preview { display: none; width: 80px; height: 80px; border: 1px solid var(--border-subtle); border-radius: 4px; opacity: 0.7; object-fit: cover; flex-shrink: 0; cursor: pointer; transition: opacity 0.2s; }
+        #preview:hover { opacity: 1; }
+        #footer { display: flex; justify-content: space-between; align-items: center; }
+        #status { font-size: 12px; color: var(--text-secondary); font-style: italic; }
+        #theme-toggle { background: none; border: none; cursor: pointer; font-size: 14px; opacity: 0.5; transition: opacity 0.2s; padding: 4px 8px; }
+        #theme-toggle:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="prompt-container">
+            <textarea id="prompt-bar" placeholder="Enter custom prompt (optional)..."></textarea>
+            <img id="preview" title="Click to view full size" />
+        </div>
+        <div id="models"></div>
+        <textarea id="output" placeholder="AI response will appear here..." readonly></textarea>
+        <div id="footer">
+            <div id="status">Ready - Click a model to analyze clipboard</div>
+            <button id="theme-toggle" title="Toggle theme">🌙</button>
+        </div>
+    </div>
+
+    <script type="module">
+        const SYSTEM_PROMPT = "You are an expert assistant helping with academic questions and coding problems. Analyze the provided content carefully and provide the most accurate answer.\nNote that the content can be an image, text, or code from clipboard.\n\nContent Analysis:\n- If this is a multiple choice question, identify all options and select the correct one\n- If this is a coding question, provide complete, working, error-free code in the desired language\n- If this is a theoretical or puzzle-like question, provide clear reasoning and explanation\n- If the content is an image, analyze it thoroughly and answer any questions about it\n\nResponse Format:\n- For multiple choice: Provide reasoning, then clearly state \"Answer: [number] - [option text]\"\n- For coding: Provide the complete solution with brief explanation without any comments exactly in the format \"The Complete Code is:\\n```[language]\\n[Code]```\"\n- For other questions: Give concise but thorough explanations, then clearly state \"Short Answer: []\"\n- Format text clearly for textarea display (no markdown)\n- If the question is unclear or missing context, ask for specific clarification\n\nAlways prioritize accuracy over speed. Think through the problem step-by-step before providing your final answer.";
+        
+        const models = [
+            { name: "gemini-2.5-flash", provider: "gemini", display: "Flash", color: "#E0F7EF" },
+            { name: "gemini-2.5-flash-lite-preview-06-17", provider: "gemini", display: "Flash Lite", color: "#E6F9D5" },
+            { name: "meta-llama/llama-4-scout-17b-16e-instruct", provider: "groq", display: "Llama 4 Scout", color: "#F0E5FF" },
+            { name: "meta-llama/llama-4-maverick-17b-128e-instruct", provider: "groq", display: "Llama 4 Maverick", color: "#E8E6FF" },
+            { name: "gpt-4o", provider: "openrouter", display: "GPT-4o", color: "#D6EFFF" },
+            { name: "moonshotai/kimi-k2-instruct", provider: "groq", display: "Kimi K2", color: "#FFF6E0" }
+        ];
+
+        const apiKeys = {
+            gemini: localStorage.getItem('apiKeys.gemini') || '',
+            openai: localStorage.getItem('apiKeys.openai') || '',
+            openrouter: localStorage.getItem('apiKeys.openrouter') || '',
+            groq: localStorage.getItem('apiKeys.groq') || '',
+            anthropic: localStorage.getItem('apiKeys.anthropic') || ''
+        };
+
+        const modelsEl = document.getElementById('models');
+        const outputEl = document.getElementById('output');
+        const statusEl = document.getElementById('status');
+        const promptEl = document.getElementById('prompt-bar');
+        const previewEl = document.getElementById('preview');
+        const themeToggle = document.getElementById('theme-toggle');
+
+        let isLight = localStorage.getItem('theme') === 'light';
+        if (isLight) document.body.classList.add('light');
+        themeToggle.textContent = isLight ? '☀️' : '🌙';
+
+        themeToggle.onclick = () => {
+            isLight = !isLight;
+            document.body.classList.toggle('light', isLight);
+            themeToggle.textContent = isLight ? '☀️' : '🌙';
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            updateButtonColors();
+        };
+
+        previewEl.onclick = () => window.open(previewEl.src, '_blank');
+
+        function darkenColor(color) {
+            let n = parseInt(color.slice(1), 16);
+            let r = n >> 16, g = n >> 8 & 255, b = n & 255;
+            let d = x => (x * (isLight ? 1 : 0.3) | 0);
+            return '#' + ((1 << 24) | (d(r) << 16) | (d(g) << 8) | d(b)).toString(16).slice(1);
+        }
+
+        function updateButtonColors() {
+            document.querySelectorAll('.model-btn').forEach((btn, i) => {
+                btn.style.background = darkenColor(models[i].color);
+                btn.style.color = isLight ? '#000' : '#e0e0e0';
+            });
+        }
+
+        models.forEach(model => {
+            const btn = document.createElement('button');
+            btn.className = 'model-btn';
+            btn.style.background = darkenColor(model.color);
+            btn.style.color = '#e0e0e0';
+            btn.innerHTML = `<span class="model-name">${model.display}</span><span class="spinner">⠋</span>`;
+            btn.onclick = () => handleGenerate(model);
+            modelsEl.appendChild(btn);
+        });
+
+        async function getClipboard() {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                if (item.types.includes('image/png')) {
+                    const blob = await item.getType('image/png');
+                    const reader = new FileReader();
+                    return new Promise(resolve => {
+                        reader.onload = () => {
+                            const base64 = reader.result.split(',')[1];
+                            previewEl.src = reader.result;
+                            previewEl.style.display = 'block';
+                            resolve({ type: 'image', data: base64, mime: 'image/png' });
+                        };
+                        reader.readAsDataURL(blob);
+                    });
+                }
+            }
+            const text = await navigator.clipboard.readText();
+            previewEl.style.display = 'none';
+            return { type: 'text', data: text };
+        }
+
+        async function handleGenerate(model) {
+            const btn = event.currentTarget;
+            btn.classList.add('loading');
+            outputEl.value = '';
+            statusEl.textContent = `Generating with ${model.display}...`;
+
+            try {
+                const clipboard = await getClipboard();
+                let apiKey = apiKeys[model.provider];
+                
+                if (!apiKey) {
+                    apiKey = prompt(`Enter your ${model.provider} API key:`);
+                    if (!apiKey) throw new Error('API key required');
+                    apiKeys[model.provider] = apiKey;
+                    localStorage.setItem(`apiKeys.${model.provider}`, apiKey);
+                }
+
+                const customPrompt = promptEl.value.trim();
+                const fullPrompt = customPrompt ? `${SYSTEM_PROMPT}\n\nUser instructions: ${customPrompt}` : SYSTEM_PROMPT;
+
+                let content;
+                if (clipboard.type === 'image') {
+                    content = model.provider === 'gemini' 
+                        ? [{ text: fullPrompt }, { inline_data: { mime_type: clipboard.mime, data: clipboard.data } }]
+                        : [{ type: "text", text: fullPrompt }, { type: "image_url", image_url: { url: `data:${clipboard.mime};base64,${clipboard.data}` } }];
+                } else {
+                    content = model.provider === 'gemini'
+                        ? [{ text: `${fullPrompt}\n\nContent: ${clipboard.data}` }]
+                        : [{ type: "text", text: `${fullPrompt}\n\nContent: ${clipboard.data}` }];
+                }
+
+                const start = Date.now();
+                const answer = await callAPI(model, content, apiKey, (partial) => outputEl.value = partial);
+                
+                statusEl.textContent = `Complete (${Date.now() - start}ms)`;
+                outputEl.value = answer;
+            } catch (err) {
+                outputEl.value = err.stack || err;
+                statusEl.textContent = `Error: ${err.message.slice(0, 50)}`;
+                console.error(err);
+            } finally {
+                btn.classList.remove('loading');
+            }
+        }
+
+        async function callAPI(model, content, key, onProgress) {
+            // const CORS = 'https://api.allorigins.win/raw?url=';
+            const CORS = 'https://corsproxy.io/?';
+            
+            const apis = {
+                gemini: {
+                    url: `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${key}&alt=sse`,
+                    body: { system_instruction: { parts: content[0] }, contents: [{ parts: content.slice(1).length ? content.slice(1) : content }] },
+                    extract: (d) => d.candidates?.[0]?.content?.parts?.[0]?.text
+                },
+                openai: {
+                    url: "https://api.openai.com/v1/chat/completions",
+                    headers: { "Authorization": `Bearer ${key}` },
+                    body: { model: model.name, messages: [{ role: "user", content }], stream: true },
+                    extract: (d) => d.choices?.[0]?.delta?.content
+                },
+                openrouter: {
+                    url: CORS + "https://api.openrouter.ai/v1/chat/completions",
+                    headers: { "Authorization": `Bearer ${key}` },
+                    body: { model: model.name, messages: [{ role: "user", content }], stream: true },
+                    extract: (d) => d.choices?.[0]?.delta?.content
+                },
+                groq: {
+                    url: CORS + "https://api.groq.com/openai/v1/chat/completions",
+                    headers: { "Authorization": `Bearer ${key}` },
+                    body: { model: model.name, messages: [{ role: "user", content }], stream: true },
+                    extract: (d) => d.choices?.[0]?.delta?.content
+                },
+                anthropic: {
+                    url: CORS + "https://api.anthropic.com/v1/messages",
+                    headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+                    body: { model: model.name, messages: [{ role: "user", content }], max_tokens: 4096, stream: true },
+                    extract: (d) => d.type === 'content_block_delta' && d.delta?.text
+                }
+            };
+
+            const config = apis[model.provider];
+            const res = await fetch(config.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...config.headers },
+                body: JSON.stringify(config.body)
+            });
+
+            if (!res.ok) {
+                const err = await res.text();
+                throw new Error(`API error (${res.status}): ${err.slice(0, 200)}`);
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let answer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                decoder.decode(value).split('\n').forEach(line => {
+                    if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+                        try {
+                            const text = config.extract(JSON.parse(line.slice(6)));
+                            if (text) { answer += text; onProgress(answer); }
+                        } catch {}
+                    }
+                });
+            }
+
+            return answer;
+        }
+    </script>
+</body>
+</html>
