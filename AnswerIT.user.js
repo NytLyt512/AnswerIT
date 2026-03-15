@@ -36,8 +36,7 @@ const PRESET_PROVIDER_SEED = [
 	{ id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1', page: 'https://console.groq.com/keys' },
 	{ id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', page: 'https://openrouter.ai/keys' },
 	{ id: 'nvidia', name: 'NVIDIA NIM', endpoint: 'https://integrate.api.nvidia.com/v1', page: 'https://build.nvidia.com/' },
-	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' },
-	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/settings/keys' }
+	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' }
 ];
 
 const versionLessThan = (a = '0', b = '0') => {
@@ -68,30 +67,23 @@ if (versionLessThan(prevVersion, GM_info.script.version)) {
 
 	// --- v5.0.0 ---
 	if (versionLessThan(prevVersion, '5.0.0')) {
-		const oldCompat = GM_getValue('openaiCompat', null);
 		const oldApiKeys = GM_getValue('apiKeys', {});
 		const providers = GM_getValue('providers', {});
 		const models = GM_getValue('models', []);
-		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, useResponsesApi: false });
+		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, useResponsesApi: false, reasoningEffort: 'none' });
 
 		if (!Object.keys(providers).length) {
-			if (oldCompat?.providers && typeof oldCompat.providers === 'object') {
-				GM_setValue('providers', oldCompat.providers);
-			} else {
-				const seed = Object.fromEntries(PRESET_PROVIDER_SEED.map(p => [p.id, { ...p, apiKey: oldApiKeys[p.id] || '', enabled: !!oldApiKeys[p.id], headers: {} }]));
-				GM_setValue('providers', seed);
-			}
+			const seed = Object.fromEntries(PRESET_PROVIDER_SEED.map(p => [p.id, { ...p, apiKey: oldApiKeys[p.id] || '', enabled: !!oldApiKeys[p.id], headers: {} }]));
+			GM_setValue('providers', seed);
 		}
-		if (!Array.isArray(models) || !models.length) {
-			if (Array.isArray(oldCompat?.models)) GM_setValue('models', oldCompat.models);
-		}
+		if (!Array.isArray(models)) GM_setValue('models', []);
 		if (!aiSettings || typeof aiSettings !== 'object') {
 			GM_setValue('aiSettings', {
-				enableFollowups: !!oldCompat?.flags?.enableFollowups,
-				useResponsesApi: !!oldCompat?.flags?.useResponsesApi,
+				enableFollowups: false,
+				useResponsesApi: false,
+				reasoningEffort: 'none',
 			});
 		}
-		if (oldCompat) GM_deleteValue('openaiCompat');
 	}
 
 	GM_setValue('script_version', GM_info.script.version);
@@ -116,8 +108,8 @@ const config = {
 	/** @type {Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
 	models: GM_getValue('models', []),
 
-	/** @type {{ enableFollowups: boolean, useResponsesApi: boolean }} */
-	aiSettings: Object.assign({ enableFollowups: false, useResponsesApi: false }, GM_getValue('aiSettings', {})),
+	/** @type {{ enableFollowups: boolean, useResponsesApi: boolean, reasoningEffort: 'high'|'med'|'low'|'none' }} */
+	aiSettings: Object.assign({ enableFollowups: false, useResponsesApi: false, reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
@@ -205,9 +197,8 @@ const websites = [
 ];
 
 // --- AI Models Declarations ---
-const getConfiguredModels = () => (config.models || [])
+const getEnabledModels = () => (config.models || [])
 	.filter(m => m?.name && m?.providerId && m?.enabled)
-	.slice(0, 4)
 	.map((m, i) => ({
 		id: m.id || `${m.providerId}:${m.name}:${i}`,
 		name: m.name,
@@ -217,10 +208,20 @@ const getConfiguredModels = () => (config.models || [])
 		color: m.color || ['#D2F8E5', '#E8E6FF', '#E5F7FF', '#FFE5F0'][i % 4],
 		tooltip: `${m.name} via ${config.providers[m.providerId]?.endpoint || 'custom endpoint'}`,
 		provider: m.providerId,
-		options: m.options || {}
+		options: m.options || {},
+		reasoning: !!m.reasoning,
+		imageInput: !!m.imageInput,
 	}));
 
-const getModelByName = (name) => getConfiguredModels().find(m => m.name === name);
+const getVisibleModels = () => {
+	const all = getEnabledModels();
+	const top3 = all.slice(0, 3), rest = all.slice(3);
+	if (!rest.length) return top3;
+	const pinned = GM_getValue('modelShortcut4', ''), selected = rest.find(m => m.name === pinned) || rest[0];
+	return [...top3, selected];
+};
+
+const getModelByName = (name) => getEnabledModels().find(m => m.name === name);
 let defaultModel = null;
 
 
@@ -289,7 +290,7 @@ unsafeWindow.aitPopup = popup; // Expose to unsafeWindow for compatibility with 
 
 let currentSite = null;
 let currentQnIdentifier = null;
-defaultModel = getConfiguredModels()[0]?.name || null; // no default if user did not configure models
+defaultModel = getEnabledModels()[0]?.name || null; // no default if user did not configure models
 
 const isScriptPage = {
 	get: location.href.includes("/AnswerIT"),
@@ -396,7 +397,7 @@ const ReflectorHost = {
 			if (msg.type === 'action') {
 				if (msg.action === 'button-click') popup.querySelector('#' + msg.data.elementId)?.click();
 				if (msg.action === 'model-click') {
-					const m = getConfiguredModels()[msg.data.modelIndex];
+					const m = getVisibleModels()[msg.data.modelIndex];
 					if (m?.name) handleGenerateAnswer(m.name);
 				}
 				if (msg.action === 'custom-prompt-change') {
@@ -471,8 +472,17 @@ const AIProviders = {
 	_BaseProvider: {
 		async streamResponse(url, headers, payload, onProgress) {
 			return new Promise((resolve, reject) => {
-				let answer = '', reasoning = '', processed = 0;
+				let answer = '', reasoning = '', processed = 0, inThoughtTag = false;
 				const pickReasoning = d => d?.reasoning || d?.reasoning_content || d?.reasoningText || d?.reasoning?.text || d?.thinking || '';
+				const splitThoughtMarkup = (text = '') => {
+					let i = 0;
+					while (i < text.length) {
+						if (text.startsWith('<thought>', i) || text.startsWith('<think>', i)) { inThoughtTag = true; i += 9; continue; }
+						if (text.startsWith('</thought>', i) || text.startsWith('</think>', i)) { inThoughtTag = false; i += 10; continue; }
+						const ch = text[i++];
+						if (inThoughtTag) reasoning += ch; else answer += ch;
+					}
+				};
 				GM.xmlHttpRequest({
 					method: 'POST', url, headers, data: JSON.stringify(payload),
 					onprogress: r => {
@@ -484,8 +494,10 @@ const AIProviders = {
 								const json = JSON.parse(line.slice(6));
 								const d = json?.choices?.[0]?.delta || {};
 								const txt = d.content || d.text || '';
+								const isGoogleThought = !!d?.extra_content?.google?.thought;
 								const rs = pickReasoning(d) || (Array.isArray(d.reasoning_details) ? d.reasoning_details.map(x => x?.text || '').join('\n') : '');
-								if (txt) answer += txt;
+								if (txt && isGoogleThought) reasoning += txt;
+								else if (txt) splitThoughtMarkup(txt);
 								if (rs) reasoning += rs;
 								if (txt || rs) onProgress({ answer, reasoning });
 							} catch { }
@@ -503,7 +515,9 @@ const AIProviders = {
 		const p = config.providers?.[provider];
 		if (!p?.endpoint || !p?.apiKey) throw new Error(`Missing provider config for ${provider}`);
 		const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: 'image_url', image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
-		const content = contentParts.map(part => part.text ? { type: 'text', text: part.text } : part);
+		const content = contentParts
+			.map(part => part.text ? { type: 'text', text: part.text } : part)
+			.filter(part => model.imageInput || part.type === 'text');
 		const messages = [
 			{ role: 'system', content: AIProviders._SYSTEM_INSTRUCTION },
 			...(contextMessages || []),
@@ -514,10 +528,21 @@ const AIProviders = {
 			headers['HTTP-Referer'] = location.origin;
 			headers['X-Title'] = 'AnswerIT';
 		}
+		const effortMap = { high: 'high', med: 'medium', low: 'low', none: null };
+		const supportsEffortParam = ['groq', 'openai', 'openrouter'].includes(provider);
+		const reasoningEffort = model.reasoning && supportsEffortParam ? effortMap[config.aiSettings.reasoningEffort || 'none'] : null;
+		const payload = {
+			model: model.name,
+			messages,
+			stream: true,
+			...(model.options || {}),
+			...(config.aiSettings.useResponsesApi ? { response_format: { type: 'text' } } : {})
+		};
+		if (reasoningEffort && payload.reasoning_effort === undefined) payload.reasoning_effort = reasoningEffort;
 		return AIProviders._BaseProvider.streamResponse(
 			`${p.endpoint.replace(/\/$/, '')}/chat/completions`,
 			headers,
-			{ model: model.name, messages, stream: true, ...(model.options || {}), ...(config.aiSettings.useResponsesApi ? { response_format: { type: 'text' } } : {}) },
+			payload,
 			onProgress
 		);
 	}
@@ -649,21 +674,22 @@ const AIState = {
 		const caption = popup.querySelector("#ait-caption");
 		if (qn.status === 'generating' && qn.lastUsedModel) {
 			const model = this.getModel(qnId, qn.lastUsedModel);
+			const effort = config.aiSettings.reasoningEffort || 'none';
 			if (model.startTime) {
 				const elapsed = Date.now() - model.startTime;
 				const seconds = Math.floor(elapsed / 1000).toString().padStart(2, "0");
 				const ms = Math.floor((elapsed % 1000) / 10).toString().padStart(2, "0");
-				caption.textContent = `Generating with ${qn.lastUsedModel} (${seconds}:${ms})`;
+				caption.textContent = `Generating with ${qn.lastUsedModel}:${effort} (${seconds}:${ms})`;
 				setTimeout(() => this.updateUI(), 50); // Continue updating timer
 			} else {
-				caption.textContent = `Generating with ${qn.lastUsedModel}...`;
+				caption.textContent = `Generating with ${qn.lastUsedModel}:${effort}...`;
 			}
 		} else {
 			caption.textContent = qn.metadata || "Response metadata will appear here";
 		}
 
 		// Update model buttons
-		getConfiguredModels().forEach(model => {
+		getVisibleModels().forEach(model => {
 			const button = popup.modelBtn[model.name];
 			if (!button) return;
 
@@ -840,6 +866,11 @@ function createPopupUI() {
 					<button id="ait-thought-toggle" title="Expand thoughts" data-action="controls.toggleThoughts"><span id="ait-thought-summary">Thinking...</span><span id="ait-thought-caret">▸</span></button>
 					<div id="ait-thought-body-wrap"><textarea id="ait-thought-body" readonly></textarea></div>
 				</div>
+				<span id="ait-gen-controls">
+					<button id="ait-gen-prev" title="Previous regeneration" data-action="controls.prevGeneration">‹</button>
+					<span id="ait-gen-info"></span>
+					<button id="ait-gen-next" title="Next regeneration" data-action="controls.nextGeneration">›</button>
+				</span>
 				<button id="ait-insert-button" data-action="handleInsert">Insert</button>
 				<textarea id="ait-output-textarea" placeholder="AI response will appear here..." ${GM_getValue('makeAIOutputEditable', false) ? '' : 'readonly'}></textarea>
 			</div>
@@ -847,12 +878,8 @@ function createPopupUI() {
 
 		<div id="ait-popup-footer">
 			<span id="ait-status-text">Ready</span>
-			<span id="ait-gen-controls">
-				<button id="ait-gen-prev" title="Previous regeneration" data-action="controls.prevGeneration">‹</button>
-				<span id="ait-gen-info"></span>
-				<button id="ait-gen-next" title="Next regeneration" data-action="controls.nextGeneration">›</button>
-			</span>
 			<span id="ait-followup-controls">
+				<button id="ait-effort-toggle" title="Reasoning effort: ${config.aiSettings.reasoningEffort}" data-action="controls.toggleReasoningEffort">${config.aiSettings.reasoningEffort}</button>
 				<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.aiSettings.enableFollowups ? '🧠' : '🫧'}</button>
 				<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
 			</span>
@@ -898,7 +925,7 @@ function createPopupUI() {
 			GM_setValue("theme", config.theme);
 
 			// Update model button colors immediately
-			getConfiguredModels().forEach((model) => {
+			getVisibleModels().forEach((model) => {
 				const btn = popup.modelBtn?.[model.name];
 				if (btn) btn.style.backgroundColor = getThemedColor(model.color);
 			});
@@ -990,6 +1017,17 @@ function createPopupUI() {
 			if (!wrap) return;
 			wrap.classList.toggle('expanded');
 			wrap.classList.toggle('collapsed');
+		},
+		toggleReasoningEffort: () => {
+			const order = ['high', 'med', 'low', 'none'];
+			const i = order.indexOf(config.aiSettings.reasoningEffort || 'none');
+			config.aiSettings.reasoningEffort = order[(i + 1) % order.length];
+			GM_setValue('aiSettings', config.aiSettings);
+			const btn = popup.querySelector('#ait-effort-toggle');
+			if (btn) {
+				btn.textContent = config.aiSettings.reasoningEffort;
+				btn.title = `Reasoning effort: ${config.aiSettings.reasoningEffort}`;
+			}
 		},
 		prevGeneration: () => AIState.changeGeneration(-1),
 		nextGeneration: () => AIState.changeGeneration(1),
@@ -1153,33 +1191,37 @@ function createPopupUI() {
 	// Ensure popup stays attached to edge on window resize
 	window.addEventListener('resize', popup.updatePosition);
 
-	// --- Populate models grid dynamically (top 4 enabled only) ---
-	const configuredModels = getConfiguredModels();
-	if (!configuredModels.length) {
-		popup.querySelector('#ait-models-grid').innerHTML = `
-			<button class="ait-model-setup-cta" data-action="controls.openSetup" title="Configure models/providers">
-				⚙️ Configure Providers + Models
-			</button>
-		`;
-		popup.controls.openSetup = () => window.open('https://NytLyt512.github.io/AnswerIT/configure.html', '_blank');
-	} else {
-		configuredModels.forEach((model) => {
+	// --- Populate models grid dynamically (top3 + shortcut 4th) ---
+	popup.renderModelButtons = () => {
+		popup.modelBtn = {};
+		const container = popup.querySelector('#ait-models-grid');
+		container.innerHTML = '';
+		const visible = getVisibleModels(), all = getEnabledModels(), rest = all.slice(3);
+		if (!visible.length) {
+			container.innerHTML = `<button class="ait-model-setup-cta" data-action="controls.openSetup" title="Configure models/providers">⚙️ Configure Providers + Models</button>`;
+			popup.controls.openSetup = () => window.open('https://NytLyt512.github.io/AnswerIT/configure.html', '_blank');
+			return;
+		}
+		visible.forEach((model, idx) => {
+			const isShortcut = idx === 3 && rest.length;
+			const menu = isShortcut ? `<div class="ait-shortcut-corner">⋯</div><div class="ait-shortcut-popover">${rest.map(r => `<button data-model="${r.name}" title="${r.subtitle}">${r.displayName} · ${r.subtitle}</button>`).join('')}</div>` : '';
 			const btn = Object.assign(document.createElement('button'), {
-				innerHTML: `
-				<button class="ait-model-button" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
-					<span class="ait-model-name">${model.displayName}</span>
-					<div class="ait-model-status-container">
-						<span class="ait-model-progress">⠋</span>
-						<div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div>
-					</div>
-				</button>
-			`}).firstElementChild;
+				innerHTML: `<button class="ait-model-button ${isShortcut ? 'shortcut' : ''}" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};"><span class="ait-model-name">${model.displayName}</span><div class="ait-model-status-container"><span class="ait-model-progress">⠋</span><div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div></div>${menu}</button>`
+			}).firstElementChild;
 			btn.onclick = () => handleGenerateAnswer(model.name);
-			btn.querySelector('.ait-model-status-icon').onclick = (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true); };
+			btn.querySelector('.ait-model-status-icon')?.addEventListener('click', (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true); });
+			btn.querySelectorAll('.ait-shortcut-popover button').forEach(item => item.addEventListener('click', (e) => {
+				e.stopPropagation();
+				const selected = e.currentTarget.dataset.model;
+				GM_setValue('modelShortcut4', selected);
+				defaultModel = selected;
+				popup.renderModelButtons();
+			}));
 			popup.modelBtn[model.name] = btn;
-			popup.querySelector('#ait-models-grid').appendChild(btn);
+			container.appendChild(btn);
 		});
-	}
+	};
+	popup.renderModelButtons();
 
 	// --- Events ---
 	
@@ -1301,7 +1343,7 @@ function handleUpdateUIStates() {
 		// --- Auto-run logic ---
 		if (config.autoRun) {
 			const qn = AIState.getQuestion(newQnIdentifier);
-			const modelToUse = qn.lastUsedModel || defaultModel || getConfiguredModels()[0]?.name;
+			const modelToUse = qn.lastUsedModel || defaultModel || getEnabledModels()[0]?.name;
 			if (!modelToUse) return;
 
 			setTimeout(() => {
@@ -1555,6 +1597,7 @@ GM_addStyle(`
 	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
 	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; }
+	.ait-model-button.shortcut { padding-bottom: 13px; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;	}
 	.ait-model-status-container { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; position: absolute; right: 0px; top: 0px; }
@@ -1570,6 +1613,11 @@ GM_addStyle(`
 	.ait-model-status-icon:hover .ait-model-retry-icon { display: inline; }
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
+	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
+	.ait-shortcut-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 10002; min-width: 170px; display: none; flex-direction: column; gap: 3px; background: color-mix(in srgb, var(--bg-main) 90%, #6f88ff 10%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
+	.ait-model-button.shortcut:hover .ait-shortcut-popover { display: flex; }
+	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 4px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+	.ait-shortcut-popover > button:hover { background: rgba(140,160,255,.15); }
 	@keyframes spin { to { transform: rotate(360deg); } }
 
 	#ait-custom-prompt-container { margin-top: 15px; margin-bottom: 5px; display: flex; flex-direction: column; opacity: 0.7; transition: opacity 0.3s ease; }
@@ -1582,6 +1630,10 @@ GM_addStyle(`
 	
 	#ait-insert-button { position: absolute; top: 5px; right: 5px; background-color: var(--bg-insert-button); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; font-size: 0.8em; cursor: pointer; opacity: 0.8; transition: opacity 0.3s ease; color: var(--color-text); }
 	#ait-insert-button:hover { opacity: 1; }
+	#ait-gen-controls { position: absolute; top: 5px; right: 58px; display: inline-flex; align-items: center; gap: 4px; opacity: .75; }
+	#ait-gen-controls button { border: 1px solid var(--border-color); background: transparent; color: var(--color-text); border-radius: 6px; width: 20px; height: 20px; cursor: pointer; }
+	#ait-gen-controls button:disabled { opacity: .35; cursor: not-allowed; }
+	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; }
 
 	#ait-output-container { position: relative; margin-top: 10px; display: flex; flex-direction: column; flex-grow: 1; flex-shrink: 1; flex-basis: auto; overflow: auto; margin-top: auto; }
 	#ait-thoughts { display: flex; flex-direction: column; margin-bottom: 6px; border: 1px solid var(--border-color); border-radius: 6px; background: color-mix(in srgb, var(--bg-textarea) 90%, #7d9bff 10%); }
@@ -1596,11 +1648,8 @@ GM_addStyle(`
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
-	#ait-gen-controls { display: inline-flex; align-items: center; gap: 4px; opacity: .75; }
-	#ait-gen-controls button { border: 1px solid var(--border-color); background: transparent; color: var(--color-text); border-radius: 6px; width: 20px; height: 20px; cursor: pointer; }
-	#ait-gen-controls button:disabled { opacity: .35; cursor: not-allowed; }
-	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; }
 	#ait-followup-controls { display: inline-flex; gap: 6px; align-items: center; }
+	#ait-effort-toggle { border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-main) 88%, #7b97ff 12%); color: var(--color-text); border-radius: 999px; height: 22px; padding: 0 8px; font-size: 11px; cursor: pointer; text-transform: lowercase; }
 	#ait-followup-controls > button { border: 1px solid var(--border-color); background: var(--bg-main); color: var(--color-text); border-radius: 6px; height: 22px; width: 24px; cursor: pointer; font-size: 12px; }
 
 	#ait-reflector-status { position: fixed; bottom: 8px; right: 8px; background: rgba(0, 0, 0, 0.05); padding: 3px 6px; border-radius: 8px; font: 9px monospace; z-index: 10010; opacity: 0.6; transition: all 0.5s; }

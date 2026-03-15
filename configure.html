@@ -11,7 +11,7 @@
 	<div class="hero">
 		<button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
 		<h1>🎯 AnswerIT</h1>
-		<p>Providers • custom models • generation controls</p>
+		<p>Providers • models • effort controls</p>
 		<div id="detectionStatus" class="detection-status">🔍 Detecting userscript...</div>
 	</div>
 
@@ -20,11 +20,10 @@
 			<section class="card">
 				<div class="card-icon">🚀</div>
 				<h2>Quick Start</h2>
-				<p>Provider-agnostic and model-first. No defaults — you choose your stack.</p>
 				<ol class="steps">
-					<li>Add a provider preset (Gemini, Groq, OpenRouter, NVIDIA, etc.) or create custom.</li>
-					<li>Paste API key + endpoint, then save.</li>
-					<li>Create models and enable your top picks (only top 4 shown in popup).</li>
+					<li>Add provider (preset or custom endpoint).</li>
+					<li>Set key + test connection.</li>
+					<li>Import models from endpoint or add custom manually.</li>
 				</ol>
 				<div class="quick-links">
 					<a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 GitHub</a>
@@ -36,15 +35,12 @@
 			<section class="card">
 				<div class="card-icon">⚙️</div>
 				<h2>Preferences</h2>
-				<p>Popup behavior + generation options.</p>
 				<div id="preferencesStatus" class="status"></div>
 				<form id="settingsForm">
 					<div class="preferences-grid">
 						<div class="form-group">
 							<label class="form-label">Hotkey</label>
-							<select id="hotkey" class="form-input">
-								<option value="a">Alt + A</option><option value="q">Alt + Q</option><option value="z">Alt + Z</option><option value="x">Alt + X</option>
-							</select>
+							<select id="hotkey" class="form-input"><option value="a">Alt + A</option><option value="q">Alt + Q</option><option value="z">Alt + Z</option><option value="x">Alt + X</option></select>
 						</div>
 						<div class="form-group">
 							<label class="form-label">Popup Theme</label>
@@ -59,42 +55,43 @@
 				</form>
 			</section>
 
-			<section class="card">
+			<section class="card span-2">
 				<div class="card-icon">🧩</div>
 				<h2>Providers & Models</h2>
-				<p>Everything flows through your configured providers.</p>
 				<div id="apiStatus" class="status"></div>
-
-				<div class="subhead">Preset providers (OpenAI-format endpoints)</div>
-				<div id="presetProviderBar" class="chip-row"></div>
-
-				<div class="subhead row-head">
-					<span>Configured providers</span>
-					<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom provider</button>
+				<div class="studio">
+					<div class="panel">
+						<div class="panel-head">
+							<strong>Providers</strong>
+							<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom</button>
+						</div>
+						<div id="presetProviderBar" class="chip-row"></div>
+						<div id="providerList" class="list"></div>
+					</div>
+					<div class="panel">
+						<div class="panel-head"><strong>Provider Details</strong></div>
+						<div id="providerEditor" class="editor empty-note">Select a provider to edit.</div>
+					</div>
+					<div class="panel">
+						<div class="panel-head">
+							<strong>Models</strong>
+							<button id="addModel" class="btn btn-secondary mini">+ Model</button>
+						</div>
+						<div id="modelsList" class="list"></div>
+					</div>
 				</div>
-				<div id="providersList" class="stack"></div>
-
-				<div class="subhead row-head" style="margin-top:1rem;">
-					<span>Models (enabled order controls popup top-4)</span>
-					<button id="addModel" class="btn btn-secondary mini">+ Add model</button>
-				</div>
-				<div id="modelsList" class="stack"></div>
-
-				<div class="save-row">
-					<button id="saveAIConfig" class="btn btn-primary">💾 Save AI Config</button>
-				</div>
+				<div class="save-row"><button id="saveAIConfig" class="btn btn-primary">💾 Save Providers & Models</button></div>
 			</section>
 		</div>
 
 		<section class="sites-section">
 			<h2>🌐 Supported Learning Platforms</h2>
-			<p>Auto-detected from userscript metadata.</p>
 			<div id="sitesGrid" class="sites-grid"></div>
 		</section>
 	</div>
 
 	<script>
-		const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)], id = () => (crypto.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+		const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)], rid = () => (crypto.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
 		const PRESET = [
 			{ id:'gemini', name:'Gemini', endpoint:'https://generativelanguage.googleapis.com/v1beta/openai', page:'https://aistudio.google.com/app/apikey' },
 			{ id:'groq', name:'Groq', endpoint:'https://api.groq.com/openai/v1', page:'https://console.groq.com/keys' },
@@ -108,7 +105,8 @@
 			constructor(){
 				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue };
 				this.state = { providers:{}, models:[] };
-				this.aiSettings = { enableFollowups:false, useResponsesApi:false };
+				this.aiSettings = { enableFollowups:false, useResponsesApi:false, reasoningEffort:'none' };
+				this.selectedProvider = null;
 				this.theme = localStorage.getItem('pageTheme') || 'light';
 				this.bind(); this.applyTheme(); this.detect();
 			}
@@ -120,124 +118,107 @@
 				$('#saveAIConfig').onclick = () => this.saveAIConfig();
 				$('#settingsForm').onsubmit = e => (e.preventDefault(), this.savePrefs());
 			}
-			applyTheme(){
-				document.documentElement.classList.toggle('dark', this.theme === 'dark');
-				localStorage.setItem('pageTheme', this.theme);
-				$('#themeToggle').textContent = this.theme === 'dark' ? '☀️' : '🌙';
-			}
+			applyTheme(){ document.documentElement.classList.toggle('dark', this.theme === 'dark'); localStorage.setItem('pageTheme', this.theme); $('#themeToggle').textContent = this.theme === 'dark' ? '☀️' : '🌙'; }
 			detect(){
-				let i=0,max=16;
-				const poll = () => {
-					i++;
-					if (window.AnswerIT_Config?.GM_getValue) return this.onReady();
-					$('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`;
-					if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000));
-					status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning');
-				};
-				poll();
+				let i=0,max=16; const poll = () => { i++; if (window.AnswerIT_Config?.GM_getValue) return this.onReady(); $('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`; if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000)); status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning'); }; poll();
 			}
-			onReady(){
-				status($('#detectionStatus'), '✅ Userscript connected', 'success');
-				this.load();
-				this.render();
-				this.renderSites();
-			}
+			onReady(){ status($('#detectionStatus'), '✅ Userscript connected', 'success'); this.load(); this.render(); this.renderSites(); }
 			load(){
-				const g = this.GM.getValue;
-				if (!g) return;
-				const old = g('openaiCompat', null);
-				const providers = g('providers', null), models = g('models', null);
-				this.state = {
-					providers: providers && typeof providers === 'object' ? providers : (old?.providers || {}),
-					models: Array.isArray(models) ? models : (Array.isArray(old?.models) ? old.models : []),
-				};
-				this.aiSettings = Object.assign({ enableFollowups:false, useResponsesApi:false }, g('aiSettings', null) || {
-					enableFollowups: !!old?.flags?.enableFollowups,
-					useResponsesApi: !!old?.flags?.useResponsesApi,
-				});
+				const g = this.GM.getValue; if (!g) return;
+				this.state.providers = g('providers', {}) || {};
+				this.state.models = Array.isArray(g('models', [])) ? g('models', []) : [];
+				this.aiSettings = Object.assign(this.aiSettings, g('aiSettings', {}) || {});
 				if (!Object.keys(this.state.providers).length) PRESET.forEach(p => this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} });
+				this.selectedProvider = Object.keys(this.state.providers)[0] || null;
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
 				$('#theme').value = g('theme', 'light');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 				$('#enableFollowups').checked = !!this.aiSettings.enableFollowups;
 			}
-			render(){ this.renderPresetBar(); this.renderProviders(); this.renderModels(); }
+			render(){ this.renderPresetBar(); this.renderProviderList(); this.renderProviderEditor(); this.renderModels(); }
 			renderPresetBar(){
 				$('#presetProviderBar').innerHTML = PRESET.map(p => `<button class="chip" data-id="${p.id}">${p.name}</button>`).join('');
-				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => {
-					const p = PRESET.find(x => x.id === b.dataset.id);
-					if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
-					this.renderProviders();
-				});
+				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => { const p = PRESET.find(x => x.id === b.dataset.id); if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} }; this.selectedProvider = p.id; this.render(); });
 			}
-			renderProviders(){
-				const wrap = $('#providersList');
-				wrap.innerHTML = '';
-				Object.values(this.state.providers).forEach(p => {
-					const row = document.createElement('div');
-					row.className = 'provider-card';
-					row.innerHTML = `
-						<div class="provider-head">
-							<input class="form-input mini name" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
-							<label class="switch"><input type="checkbox" class="enabled" ${p.enabled ? 'checked' : ''}><span>Enabled</span></label>
-						</div>
-						<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
-						<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
-						<div class="quick-links">
-							${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}
-							<button class="quick-link btn test">🧪 Test</button>
-							<button class="quick-link btn model">+ Model</button>
-							${p.custom ? '<button class="quick-link btn del">🗑 Remove</button>' : ''}
-						</div>`;
-					const sync = () => Object.assign(p, { name: row.querySelector('.name').value.trim(), endpoint: row.querySelector('.endpoint').value.trim(), apiKey: row.querySelector('.key').value.trim(), enabled: row.querySelector('.enabled').checked });
-					row.querySelectorAll('input').forEach(i => i.oninput = sync), sync();
-					row.querySelector('.model').onclick = e => (e.preventDefault(), sync(), this.addModel(p.id));
-					row.querySelector('.test').onclick = async e => {
-						e.preventDefault(); sync();
-						if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning');
-						status($('#apiStatus'), `Testing ${p.name}...`, 'info');
-						try {
-							const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
-							status($('#apiStatus'), r.ok ? `✅ ${p.name} is valid` : `❌ ${p.name} test failed (${r.status})`, r.ok ? 'success' : 'error');
-						} catch (err) { status($('#apiStatus'), `❌ ${p.name} test error: ${err.message}`, 'error'); }
-					};
-					const del = row.querySelector('.del'); if (del) del.onclick = e => (e.preventDefault(), delete this.state.providers[p.id], this.render());
-					wrap.appendChild(row);
-				});
+			renderProviderList(){
+				const list = $('#providerList');
+				list.innerHTML = Object.values(this.state.providers).map(p => `<button class="row-btn ${this.selectedProvider === p.id ? 'active' : ''}" data-id="${p.id}"><span>${p.name || p.id}</span><span class="pill ${p.enabled ? 'ok' : ''}">${p.enabled ? 'on' : 'off'}</span></button>`).join('') || '<div class="empty-note">No providers yet.</div>';
+				$$('#providerList .row-btn').forEach(b => b.onclick = () => { this.selectedProvider = b.dataset.id; this.renderProviderEditor(); this.renderProviderList(); });
+			}
+			renderProviderEditor(){
+				const p = this.state.providers[this.selectedProvider], box = $('#providerEditor');
+				if (!p) return box.innerHTML = '<div class="empty-note">Select a provider to edit.</div>';
+				box.innerHTML = `
+					<input class="form-input name" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
+					<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
+					<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
+					<label class="switch"><input type="checkbox" class="enabled" ${p.enabled ? 'checked' : ''}><span>Enabled</span></label>
+					<div class="quick-links">
+						${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}
+						<button class="quick-link btn test">🧪 Test</button>
+						<button class="quick-link btn fetch">⟳ Fetch /models</button>
+						${p.custom ? '<button class="quick-link btn del">🗑 Remove provider</button>' : ''}
+					</div>`;
+				const sync = () => Object.assign(p, { name: box.querySelector('.name').value.trim(), endpoint: box.querySelector('.endpoint').value.trim(), apiKey: box.querySelector('.key').value.trim(), enabled: box.querySelector('.enabled').checked });
+				box.querySelectorAll('input').forEach(el => el.oninput = () => { sync(); this.renderProviderList(); });
+				box.querySelector('.test').onclick = async e => { e.preventDefault(); sync(); if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning'); try { const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } }); status($('#apiStatus'), r.ok ? `✅ ${p.name} is valid` : `❌ ${p.name} test failed (${r.status})`, r.ok ? 'success' : 'error'); } catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); } };
+				box.querySelector('.fetch').onclick = async e => {
+					e.preventDefault(); sync();
+					if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning');
+					status($('#apiStatus'), `Fetching models from ${p.name}...`, 'info');
+					try {
+						const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
+						if (!r.ok) return status($('#apiStatus'), `❌ /models failed (${r.status})`, 'error');
+						const body = await r.json();
+						const arr = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
+						if (!arr.length) return status($('#apiStatus'), '⚠ No model list returned.', 'warning');
+						const existing = new Set(this.state.models.map(m => `${m.providerId}:${m.name}`));
+						let added = 0;
+						arr.forEach((m, i) => {
+							const name = (m.id || m.name || '').trim(); if (!name) return;
+							const key = `${p.id}:${name}`; if (existing.has(key)) return;
+							this.state.models.push({ id: rid(), name, displayName: (m.display_name || m.name || name.replace(/^models\//, '')).slice(0, 32), providerId: p.id, enabled: added < 6 && i < 12, color:'', options:{}, reasoning:false, imageInput:false });
+							existing.add(key); added++;
+						});
+						this.renderModels();
+						status($('#apiStatus'), `✅ Imported ${added} model(s) from /models`, 'success');
+					} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
+				};
+				const del = box.querySelector('.del'); if (del) del.onclick = e => (e.preventDefault(), delete this.state.providers[p.id], this.selectedProvider = Object.keys(this.state.providers)[0] || null, this.render());
 			}
 			renderModels(){
 				const providers = Object.values(this.state.providers), list = $('#modelsList');
-				list.innerHTML = this.state.models.map((m, idx) => `
-					<div class="model-row" data-idx="${idx}">
+				list.innerHTML = this.state.models.map((m, i) => `
+					<div class="model-row" data-idx="${i}">
 						<label class="switch"><input class="en" type="checkbox" ${m.enabled ? 'checked' : ''}><span>On</span></label>
-						<input class="form-input mn" value="${(m.name || '').replace(/"/g,'&quot;')}" placeholder="model id e.g. gemini-2.5-flash">
+						<input class="form-input mn" value="${(m.name || '').replace(/"/g,'&quot;')}" placeholder="Model id">
 						<input class="form-input dn" value="${(m.displayName || '').replace(/"/g,'&quot;')}" placeholder="Display name">
 						<select class="form-input pv">${providers.map(p => `<option value="${p.id}" ${m.providerId === p.id ? 'selected' : ''}>${p.name || p.id}</option>`).join('')}</select>
-						<input class="form-input op" value="${JSON.stringify(m.options || {}).replace(/"/g,'&quot;')}" placeholder='options JSON e.g. {"reasoning_effort":"high"}'>
+						<label class="tiny-check"><input class="rs" type="checkbox" ${m.reasoning ? 'checked' : ''}> reason</label>
+						<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
+						<input class="form-input op" value="${JSON.stringify(m.options || {}).replace(/"/g,'&quot;')}" placeholder='options JSON'>
 						<button class="btn btn-secondary mini del">🗑</button>
 					</div>
-				`).join('') || '<div class="empty-note">No models yet. Add one to enable generation in popup.</div>';
+				`).join('') || '<div class="empty-note">No models yet. Add manually or fetch from /models.</div>';
 				$$('.model-row').forEach(row => {
-					const i = +row.dataset.idx, sync = () => {
-						let options = {};
-						try { options = JSON.parse(row.querySelector('.op').value || '{}'); } catch { options = {}; }
-						Object.assign(this.state.models[i], { enabled: row.querySelector('.en').checked, name: row.querySelector('.mn').value.trim(), displayName: row.querySelector('.dn').value.trim(), providerId: row.querySelector('.pv').value, options });
+					const i = +row.dataset.idx;
+					const sync = () => {
+						let options = {}; try { options = JSON.parse(row.querySelector('.op').value || '{}'); } catch { options = {}; }
+						Object.assign(this.state.models[i], { enabled: row.querySelector('.en').checked, name: row.querySelector('.mn').value.trim(), displayName: row.querySelector('.dn').value.trim(), providerId: row.querySelector('.pv').value, reasoning: row.querySelector('.rs').checked, imageInput: row.querySelector('.im').checked, options });
 					};
-					row.querySelectorAll('input,select').forEach(el => el.oninput = sync), sync();
+					row.querySelectorAll('input,select').forEach(el => el.oninput = sync); sync();
 					row.querySelector('.del').onclick = e => (e.preventDefault(), this.state.models.splice(i, 1), this.renderModels());
 				});
 			}
-			addCustomProvider(){ const pid = `custom-${id().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.renderProviders(); }
-			addModel(providerId){ this.state.models.push({ id:id(), name:'', displayName:'', providerId: providerId || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{} }); this.renderModels(); }
+			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.selectedProvider = pid; this.render(); }
+			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.selectedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); }
 			saveAIConfig(){
-				this.aiSettings = { ...this.aiSettings, enableFollowups: $('#enableFollowups').checked };
-				this.state.models = this.state.models.filter(m => m.name && m.providerId);
 				this.GM.setValue('providers', this.state.providers);
-				this.GM.setValue('models', this.state.models);
+				this.GM.setValue('models', this.state.models.filter(m => m.name && m.providerId));
 				this.GM.setValue('aiSettings', this.aiSettings);
 				const apiKeys = Object.fromEntries(Object.values(this.state.providers).filter(p => p.apiKey).map(p => [p.id, p.apiKey]));
-				this.GM.setValue('apiKeys', apiKeys); // back-compat
+				this.GM.setValue('apiKeys', apiKeys);
 				status($('#apiStatus'), `✅ Saved ${Object.keys(this.state.providers).length} providers and ${this.state.models.length} models`, 'success');
 			}
 			savePrefs(){
@@ -248,12 +229,8 @@
 				this.GM.setValue('makeAIOutputEditable', $('#makeAIOutputEditable').checked);
 				status($('#preferencesStatus'), '✅ Preferences saved', 'success');
 			}
-			renderSites(){
-				const sites = window.AnswerIT_Config?.supportedSites || [];
-				$('#sitesGrid').innerHTML = sites.map(s => `<a class="site-card" href="https://${(s.urls?.[0] || '').replace(/^https?:\/\//,'')}" target="_blank"><div class="site-favicon">🌐</div><h3>${s.name}</h3></a>`).join('');
-			}
+			renderSites(){ const sites = window.AnswerIT_Config?.supportedSites || []; $('#sitesGrid').innerHTML = sites.map(s => `<a class="site-card" href="https://${(s.urls?.[0] || '').replace(/^https?:\/\//,'')}" target="_blank"><div class="site-favicon">🌐</div><h3>${s.name}</h3></a>`).join(''); }
 		}
-
 		new ConfigManager();
 	</script>
 </body>
