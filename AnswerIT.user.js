@@ -36,7 +36,10 @@ const PRESET_PROVIDER_SEED = [
 	{ id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1', page: 'https://console.groq.com/keys' },
 	{ id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', page: 'https://openrouter.ai/keys' },
 	{ id: 'nvidia', name: 'NVIDIA NIM', endpoint: 'https://integrate.api.nvidia.com/v1', page: 'https://build.nvidia.com/settings/api-keys' },
-	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' }
+	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' },
+	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/account/api-keys' },
+	{ id: 'azure', name: 'Azure OpenAI', endpoint: 'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME', page: 'https://portal.azure.com/#view/Microsoft_Azure_OpenAI/OpenAIResourcesMenuBlade/~/overview' },
+	{ id: 'ollama', name: 'Ollama', endpoint: 'http://localhost:11434/v1', page: 'https://ollama.com/download' },
 ];
 
 const versionLessThan = (a = '0', b = '0') => {
