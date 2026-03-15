@@ -1650,16 +1650,17 @@ GM_addStyle(`
 	#ait-opacity-toggle.slider::after { content: ''; position: absolute; width: 20px; height: 20px; background: var(--color-text); border-radius: 50%; left: 2px; top: var(--thumb-top, 2px); transition: top 0.2s ease;}
 
 	#ait-caption { font-size: 0.85em; color: var(--color-caption); margin-bottom: 5px; font-style: italic; }
-	#ait-popup-content { padding: 15px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+	#ait-popup-content { padding: 15px; overflow-y: auto; overflow-x: hidden; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 
 	/* Flat top-4 model row */
-	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; }
-	.ait-model-wrap { position: relative; overflow: visible; }
+	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; align-items: stretch; }
+	.ait-model-wrap { position: relative; overflow: visible; min-width: 0; }
+	.ait-model-wrap.shortcut::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: visible; }
+	.ait-model-button { width: 100%; min-width: 0; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 22px 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: hidden; }
 	.ait-model-button.shortcut { padding-bottom: 13px; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
-	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;	}
+	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; flex: 1; }
 	.ait-model-status-container { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; position: absolute; right: 0px; top: 0px; }
 	.ait-model-progress { font-size: 14px; color: var(--spinner-color); animation: spin 2s linear infinite; display: none; }
 	.ait-model-button.loading { cursor: progress; opacity: 0.8; }
@@ -1674,8 +1675,9 @@ GM_addStyle(`
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
 	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
-	.ait-shortcut-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 10020; width: 250px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
+	.ait-shortcut-popover { position: absolute; right: 0; top: calc(100% + 1px); z-index: 10020; width: 230px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
 	.ait-model-wrap.shortcut:hover .ait-shortcut-popover,
+	.ait-model-wrap.shortcut:focus-within .ait-shortcut-popover,
 	.ait-shortcut-popover:hover { display: flex; }
 	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 5px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; line-height: 1.2; }
 	.ait-shortcut-popover > button > span { opacity: .7; font-size: 10px; }
@@ -1697,10 +1699,10 @@ GM_addStyle(`
 	#ait-view-toggle { position: absolute; top: 5px; right: 58px; background-color: var(--bg-insert-button); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 7px; font-size: 0.75em; cursor: pointer; opacity: 0.86; color: var(--color-text); text-transform: uppercase; }
 	#ait-insert-button { position: absolute; top: 5px; right: 5px; background-color: var(--bg-insert-button); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; font-size: 0.8em; cursor: pointer; opacity: 0.8; transition: opacity 0.3s ease; color: var(--color-text); }
 	#ait-insert-button:hover { opacity: 1; }
-	#ait-gen-controls { position: absolute; bottom: 8px; right: 8px; display: inline-flex; align-items: center; gap: 4px; opacity: .78; background: color-mix(in srgb, var(--bg-main) 88%, #6e8bff 12%); border: 1px solid var(--border-color); border-radius: 8px; padding: 2px 4px; }
+	#ait-gen-controls { position: absolute; bottom: 0px; right: 16px; display: inline-flex; align-items: center; gap: 4px; opacity: .78; background: color-mix(in srgb, var(--bg-main) 88%, #6e8bff 12%); border: 1px solid var(--border-color); border-radius: 8px; padding: 2px 4px; }
 	#ait-gen-controls button { border: 1px solid var(--border-color); background: transparent; color: var(--color-text); border-radius: 6px; width: 20px; height: 20px; cursor: pointer; }
 	#ait-gen-controls button:disabled { opacity: .35; cursor: not-allowed; }
-	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; }
+	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; color: var(--color-text); }
 
 	#ait-output-container { position: relative; margin-top: 10px; display: flex; flex-direction: column; flex-grow: 1; flex-shrink: 1; flex-basis: auto; overflow: auto; margin-top: auto; }
 	#ait-thoughts { display: flex; flex-direction: column; margin-bottom: 6px; border: 1px solid var(--border-color); border-radius: 6px; background: color-mix(in srgb, var(--bg-textarea) 90%, #7d9bff 10%); }

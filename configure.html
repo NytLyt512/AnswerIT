@@ -65,7 +65,6 @@
 				<div class="studio">
 					<div class="providers-panel">
 						<div class="panel-head"><strong>Providers</strong><button id="addCustomProvider" class="btn btn-secondary mini">+ Custom</button></div>
-						<div id="presetProviderBar" class="chip-row"></div>
 						<div id="providerList" class="list"></div>
 					</div>
 					<div class="models-panel">
@@ -95,7 +94,7 @@
             { id:'azure', name:'Azure OpenAI', endpoint:'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME', page:'https://portal.azure.com/#view/Microsoft_Azure_OpenAI/OpenAIResourcesMenuBlade/~/overview' },
             { id:'ollama', name:'Ollama', endpoint:'http://localhost:11434/v1', page:'https://ollama.com/download' },
 		];
-		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.display = 'flex'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
+		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.cssText += 'display: flex; transition: all 1.7s allow-discrete;'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
 
 		class ConfigManager {
 			constructor(){
@@ -123,7 +122,7 @@
 				this.state.providers = g('providers', {}) || {};
 				this.state.models = Array.isArray(g('models', [])) ? g('models', []) : [];
 				this.aiSettings = Object.assign(this.aiSettings, g('aiSettings', {}) || {});
-				if (!Object.keys(this.state.providers).length) PRESET.forEach(p => this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} });
+				PRESET.forEach(p => { if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} }; });
 				this.expandedProvider = Object.keys(this.state.providers)[0] || null;
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
@@ -131,15 +130,7 @@
 				$('#outputMode').value = g('outputMode', 'raw');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 			}
-			render(){ this.renderPresetBar(); this.renderProviderList(); this.renderModels(); }
-			renderPresetBar(){
-				$('#presetProviderBar').innerHTML = PRESET.map(p => `<button class="chip" data-id="${p.id}">${p.name}</button>`).join('');
-				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => {
-					const p = PRESET.find(x => x.id === b.dataset.id);
-					if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
-					this.expandedProvider = p.id; this.renderProviderList();
-				});
-			}
+			render(){ this.renderProviderList(); this.renderModels(); }
 			renderProviderList(){
 				const list = $('#providerList');
 				list.innerHTML = Object.values(this.state.providers).map(p => {
@@ -192,7 +183,7 @@
 			}
 
 			renderModels(){
-				const providers = Object.values(this.state.providers), list = $('#modelsList');
+				const providers = Object.values(this.state.providers), enabledProviders = providers.filter(p => p.enabled), list = $('#modelsList');
 				list.innerHTML = this.state.models.map((m, i) => `
 					<div class="model-row ${m.enabled === false ? 'disabled' : ''}" data-idx="${i}" draggable="true">
 						<div class="drag">⋮⋮</div>
@@ -202,7 +193,7 @@
 							<datalist id="dl-${i}"></datalist>
 							<input class="form-input dn" value="${(m.displayName || '').replace(/"/g,'&quot;')}" placeholder="Display name (override)">
 						</div>
-						<select class="form-input pv">${providers.map(p => `<option value="${p.id}" ${m.providerId === p.id ? 'selected' : ''}>${p.name || p.id}</option>`).join('')}</select>
+						<select class="form-input pv">${enabledProviders.length ? enabledProviders.map(p => `<option value="${p.id}" ${m.providerId === p.id ? 'selected' : ''}>${p.name || p.id}</option>`).join('') : '<option value="" disabled selected>No enabled providers</option>'}</select>
 						<div class="cap-stack">
 							<label class="tiny-check"><input class="rs" type="checkbox" ${m.reasoning ? 'checked' : ''}> reason</label>
 							<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
