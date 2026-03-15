@@ -21,9 +21,9 @@
 				<div class="card-icon">🚀</div>
 				<h2>Quick Start</h2>
 				<ol class="steps">
-					<li>Add provider (preset or custom endpoint).</li>
-					<li>Set key + test connection.</li>
-					<li>Import models from endpoint or add custom manually.</li>
+					<li>Add provider (preset/custom) and expand it to configure.</li>
+					<li>Add models, pick model id from provider list or type manually.</li>
+					<li>Drag rows to reorder priority.</li>
 				</ol>
 				<div class="quick-links">
 					<a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 GitHub</a>
@@ -60,23 +60,13 @@
 				<h2>Providers & Models</h2>
 				<div id="apiStatus" class="status"></div>
 				<div class="studio">
-					<div class="panel">
-						<div class="panel-head">
-							<strong>Providers</strong>
-							<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom</button>
-						</div>
+					<div class="providers-panel">
+						<div class="panel-head"><strong>Providers</strong><button id="addCustomProvider" class="btn btn-secondary mini">+ Custom</button></div>
 						<div id="presetProviderBar" class="chip-row"></div>
 						<div id="providerList" class="list"></div>
 					</div>
-					<div class="panel">
-						<div class="panel-head"><strong>Provider Details</strong></div>
-						<div id="providerEditor" class="editor empty-note">Select a provider to edit.</div>
-					</div>
-					<div class="panel">
-						<div class="panel-head">
-							<strong>Models</strong>
-							<button id="addModel" class="btn btn-secondary mini">+ Model</button>
-						</div>
+					<div class="models-panel">
+						<div class="panel-head"><strong>Models (drag to reorder)</strong><button id="addModel" class="btn btn-secondary mini">+ Model</button></div>
 						<div id="modelsList" class="list"></div>
 					</div>
 				</div>
@@ -96,17 +86,18 @@
 			{ id:'gemini', name:'Gemini', endpoint:'https://generativelanguage.googleapis.com/v1beta/openai', page:'https://aistudio.google.com/app/apikey' },
 			{ id:'groq', name:'Groq', endpoint:'https://api.groq.com/openai/v1', page:'https://console.groq.com/keys' },
 			{ id:'openrouter', name:'OpenRouter', endpoint:'https://openrouter.ai/api/v1', page:'https://openrouter.ai/keys' },
-			{ id:'nvidia', name:'NVIDIA NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/' },
+			{ id:'nvidia', name:'NVIDIA NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/settings/api-keys' },
 			{ id:'openai', name:'OpenAI', endpoint:'https://api.openai.com/v1', page:'https://platform.openai.com/api-keys' }
 		];
 		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.display = 'flex'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
 
 		class ConfigManager {
 			constructor(){
-				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue };
+				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue, fetch: window.AnswerIT_Config?.GM_fetch };
 				this.state = { providers:{}, models:[] };
-				this.aiSettings = { enableFollowups:false, useResponsesApi:false, reasoningEffort:'none' };
-				this.selectedProvider = null;
+				this.aiSettings = { enableFollowups:false, reasoningEffort:'none' };
+				this.expandedProvider = null;
+				this.modelCatalog = {};
 				this.theme = localStorage.getItem('pageTheme') || 'light';
 				this.bind(); this.applyTheme(); this.detect();
 			}
@@ -119,9 +110,7 @@
 				$('#settingsForm').onsubmit = e => (e.preventDefault(), this.savePrefs());
 			}
 			applyTheme(){ document.documentElement.classList.toggle('dark', this.theme === 'dark'); localStorage.setItem('pageTheme', this.theme); $('#themeToggle').textContent = this.theme === 'dark' ? '☀️' : '🌙'; }
-			detect(){
-				let i=0,max=16; const poll = () => { i++; if (window.AnswerIT_Config?.GM_getValue) return this.onReady(); $('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`; if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000)); status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning'); }; poll();
-			}
+			detect(){ let i=0,max=16; const poll = () => { i++; if (window.AnswerIT_Config?.GM_getValue) return this.onReady(); $('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`; if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000)); status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning'); }; poll(); }
 			onReady(){ status($('#detectionStatus'), '✅ Userscript connected', 'success'); this.load(); this.render(); this.renderSites(); }
 			load(){
 				const g = this.GM.getValue; if (!g) return;
@@ -129,90 +118,145 @@
 				this.state.models = Array.isArray(g('models', [])) ? g('models', []) : [];
 				this.aiSettings = Object.assign(this.aiSettings, g('aiSettings', {}) || {});
 				if (!Object.keys(this.state.providers).length) PRESET.forEach(p => this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} });
-				this.selectedProvider = Object.keys(this.state.providers)[0] || null;
+				this.expandedProvider = Object.keys(this.state.providers)[0] || null;
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
 				$('#theme').value = g('theme', 'light');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 				$('#enableFollowups').checked = !!this.aiSettings.enableFollowups;
 			}
-			render(){ this.renderPresetBar(); this.renderProviderList(); this.renderProviderEditor(); this.renderModels(); }
+			render(){ this.renderPresetBar(); this.renderProviderList(); this.renderModels(); }
 			renderPresetBar(){
 				$('#presetProviderBar').innerHTML = PRESET.map(p => `<button class="chip" data-id="${p.id}">${p.name}</button>`).join('');
-				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => { const p = PRESET.find(x => x.id === b.dataset.id); if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} }; this.selectedProvider = p.id; this.render(); });
+				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => {
+					const p = PRESET.find(x => x.id === b.dataset.id);
+					if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
+					this.expandedProvider = p.id; this.renderProviderList();
+				});
 			}
 			renderProviderList(){
 				const list = $('#providerList');
-				list.innerHTML = Object.values(this.state.providers).map(p => `<button class="row-btn ${this.selectedProvider === p.id ? 'active' : ''}" data-id="${p.id}"><span>${p.name || p.id}</span><span class="pill ${p.enabled ? 'ok' : ''}">${p.enabled ? 'on' : 'off'}</span></button>`).join('') || '<div class="empty-note">No providers yet.</div>';
-				$$('#providerList .row-btn').forEach(b => b.onclick = () => { this.selectedProvider = b.dataset.id; this.renderProviderEditor(); this.renderProviderList(); });
-			}
-			renderProviderEditor(){
-				const p = this.state.providers[this.selectedProvider], box = $('#providerEditor');
-				if (!p) return box.innerHTML = '<div class="empty-note">Select a provider to edit.</div>';
-				box.innerHTML = `
-					<input class="form-input name" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
-					<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
-					<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
-					<label class="switch"><input type="checkbox" class="enabled" ${p.enabled ? 'checked' : ''}><span>Enabled</span></label>
-					<div class="quick-links">
-						${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}
-						<button class="quick-link btn test">🧪 Test</button>
-						<button class="quick-link btn fetch">⟳ Fetch /models</button>
-						${p.custom ? '<button class="quick-link btn del">🗑 Remove provider</button>' : ''}
+				list.innerHTML = Object.values(this.state.providers).map(p => {
+					const open = this.expandedProvider === p.id;
+					return `<div class="provider-item ${open ? 'expanded' : ''}" data-id="${p.id}">
+						<div class="provider-head">
+							<button class="provider-title" type="button">${p.name || p.id}</button>
+							<label class="switch compact"><input class="provider-enabled" type="checkbox" ${p.enabled ? 'checked' : ''}><span></span></label>
+						</div>
+						<div class="provider-body">
+							<input class="form-input pname" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
+							<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
+							<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
+							<div class="quick-links">${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}<button class="quick-link btn test">🧪 Test</button>${p.custom ? '<button class="quick-link btn del">🗑 Remove</button>' : ''}</div>
+						</div>
 					</div>`;
-				const sync = () => Object.assign(p, { name: box.querySelector('.name').value.trim(), endpoint: box.querySelector('.endpoint').value.trim(), apiKey: box.querySelector('.key').value.trim(), enabled: box.querySelector('.enabled').checked });
-				box.querySelectorAll('input').forEach(el => el.oninput = () => { sync(); this.renderProviderList(); });
-				box.querySelector('.test').onclick = async e => { e.preventDefault(); sync(); if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning'); try { const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } }); status($('#apiStatus'), r.ok ? `✅ ${p.name} is valid` : `❌ ${p.name} test failed (${r.status})`, r.ok ? 'success' : 'error'); } catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); } };
-				box.querySelector('.fetch').onclick = async e => {
-					e.preventDefault(); sync();
-					if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning');
-					status($('#apiStatus'), `Fetching models from ${p.name}...`, 'info');
-					try {
-						const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
-						if (!r.ok) return status($('#apiStatus'), `❌ /models failed (${r.status})`, 'error');
-						const body = await r.json();
-						const arr = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
-						if (!arr.length) return status($('#apiStatus'), '⚠ No model list returned.', 'warning');
-						const existing = new Set(this.state.models.map(m => `${m.providerId}:${m.name}`));
-						let added = 0;
-						arr.forEach((m, i) => {
-							const name = (m.id || m.name || '').trim(); if (!name) return;
-							const key = `${p.id}:${name}`; if (existing.has(key)) return;
-							this.state.models.push({ id: rid(), name, displayName: (m.display_name || m.name || name.replace(/^models\//, '')).slice(0, 32), providerId: p.id, enabled: added < 6 && i < 12, color:'', options:{}, reasoning:false, imageInput:false });
-							existing.add(key); added++;
-						});
-						this.renderModels();
-						status($('#apiStatus'), `✅ Imported ${added} model(s) from /models`, 'success');
-					} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
-				};
-				const del = box.querySelector('.del'); if (del) del.onclick = e => (e.preventDefault(), delete this.state.providers[p.id], this.selectedProvider = Object.keys(this.state.providers)[0] || null, this.render());
+				}).join('') || '<div class="empty-note">No providers yet.</div>';
+
+				$$('.provider-item').forEach(el => {
+					const id = el.dataset.id, p = this.state.providers[id];
+					const sync = () => Object.assign(p, { name: el.querySelector('.pname').value.trim(), endpoint: el.querySelector('.endpoint').value.trim(), apiKey: el.querySelector('.key').value.trim(), enabled: el.querySelector('.provider-enabled').checked });
+					el.querySelector('.provider-title').onclick = () => { this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); };
+					el.querySelector('.provider-enabled').oninput = sync;
+					el.querySelectorAll('.pname,.endpoint,.key').forEach(inp => inp.oninput = sync);
+					el.querySelector('.test').onclick = async e => {
+						e.preventDefault(); sync();
+						if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name || p.id}`, 'warning');
+						try {
+							const r = await this.GM.fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
+							status($('#apiStatus'), r.ok ? `✅ ${p.name || p.id} is valid` : `❌ test failed (${r.status})`, r.ok ? 'success' : 'error');
+						} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
+					};
+					const del = el.querySelector('.del');
+					if (del) del.onclick = e => { e.preventDefault(); delete this.state.providers[id]; if (this.expandedProvider === id) this.expandedProvider = Object.keys(this.state.providers)[0] || null; this.renderProviderList(); this.renderModels(); };
+				});
 			}
+
+			async ensureProviderCatalog(providerId){
+				if (this.modelCatalog[providerId]) return this.modelCatalog[providerId];
+				const p = this.state.providers[providerId];
+				if (!p?.endpoint || !p?.apiKey) return [];
+				const r = await this.GM.fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
+				if (!r.ok) throw new Error(`/models failed (${r.status})`);
+				const body = await r.json();
+				const arr = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
+				this.modelCatalog[providerId] = arr.map(m => ({ id: (m.id || m.name || '').trim(), display: (m.display_name || m.name || m.id || '').trim() })).filter(m => m.id);
+				return this.modelCatalog[providerId];
+			}
+
 			renderModels(){
 				const providers = Object.values(this.state.providers), list = $('#modelsList');
 				list.innerHTML = this.state.models.map((m, i) => `
-					<div class="model-row" data-idx="${i}">
-						<label class="switch"><input class="en" type="checkbox" ${m.enabled ? 'checked' : ''}><span>On</span></label>
-						<input class="form-input mn" value="${(m.name || '').replace(/"/g,'&quot;')}" placeholder="Model id">
-						<input class="form-input dn" value="${(m.displayName || '').replace(/"/g,'&quot;')}" placeholder="Display name">
+					<div class="model-row ${m.enabled === false ? 'disabled' : ''}" data-idx="${i}" draggable="true">
+						<div class="drag">⋮⋮</div>
+						<label class="switch compact"><input class="en" type="checkbox" ${m.enabled !== false ? 'checked' : ''}><span></span></label>
+						<div class="model-main">
+							<input class="form-input mn" list="dl-${i}" value="${(m.name || '').replace(/"/g,'&quot;')}" placeholder="Model id">
+							<datalist id="dl-${i}"></datalist>
+							<input class="form-input dn" value="${(m.displayName || '').replace(/"/g,'&quot;')}" placeholder="Display name (override)">
+						</div>
 						<select class="form-input pv">${providers.map(p => `<option value="${p.id}" ${m.providerId === p.id ? 'selected' : ''}>${p.name || p.id}</option>`).join('')}</select>
-						<label class="tiny-check"><input class="rs" type="checkbox" ${m.reasoning ? 'checked' : ''}> reason</label>
-						<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
+						<div class="cap-stack">
+							<label class="tiny-check"><input class="rs" type="checkbox" ${m.reasoning ? 'checked' : ''}> reason</label>
+							<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
+						</div>
 						<input class="form-input op" value="${JSON.stringify(m.options || {}).replace(/"/g,'&quot;')}" placeholder='options JSON'>
 						<button class="btn btn-secondary mini del">🗑</button>
-					</div>
-				`).join('') || '<div class="empty-note">No models yet. Add manually or fetch from /models.</div>';
+					</div>`
+				).join('') || '<div class="empty-note">No models yet. Add one and pick a provider.</div>';
+
+				let dragFrom = -1;
 				$$('.model-row').forEach(row => {
 					const i = +row.dataset.idx;
+					const datalist = row.querySelector(`#dl-${i}`);
 					const sync = () => {
 						let options = {}; try { options = JSON.parse(row.querySelector('.op').value || '{}'); } catch { options = {}; }
-						Object.assign(this.state.models[i], { enabled: row.querySelector('.en').checked, name: row.querySelector('.mn').value.trim(), displayName: row.querySelector('.dn').value.trim(), providerId: row.querySelector('.pv').value, reasoning: row.querySelector('.rs').checked, imageInput: row.querySelector('.im').checked, options });
+						Object.assign(this.state.models[i], {
+							enabled: row.querySelector('.en').checked,
+							name: row.querySelector('.mn').value.trim(),
+							displayName: row.querySelector('.dn').value.trim(),
+							providerId: row.querySelector('.pv').value,
+							reasoning: row.querySelector('.rs').checked,
+							imageInput: row.querySelector('.im').checked,
+							options
+						});
+						row.classList.toggle('disabled', !row.querySelector('.en').checked);
 					};
-					row.querySelectorAll('input,select').forEach(el => el.oninput = sync); sync();
-					row.querySelector('.del').onclick = e => (e.preventDefault(), this.state.models.splice(i, 1), this.renderModels());
+					const fillDatalist = async () => {
+						try {
+							const providerId = row.querySelector('.pv').value;
+							const catalog = await this.ensureProviderCatalog(providerId);
+							datalist.innerHTML = catalog.map(m => `<option value="${m.id}">${m.display}</option>`).join('');
+						} catch {}
+					};
+					row.querySelector('.pv').oninput = async () => { sync(); await fillDatalist(); };
+					row.querySelector('.mn').onfocus = fillDatalist;
+					row.querySelector('.mn').onchange = async () => {
+						sync();
+						const providerId = row.querySelector('.pv').value;
+						const catalog = this.modelCatalog[providerId] || [];
+						const pick = catalog.find(x => x.id === row.querySelector('.mn').value.trim());
+						if (pick) { row.querySelector('.dn').value = pick.display; sync(); }
+					};
+					row.querySelectorAll('.en,.dn,.rs,.im,.op').forEach(el => el.oninput = sync);
+					row.querySelector('.del').onclick = e => { e.preventDefault(); this.state.models.splice(i, 1); this.renderModels(); };
+
+					row.ondragstart = () => { dragFrom = i; row.classList.add('dragging'); };
+					row.ondragend = () => row.classList.remove('dragging');
+					row.ondragover = e => e.preventDefault();
+					row.ondrop = e => {
+						e.preventDefault();
+						const to = +row.dataset.idx;
+						if (dragFrom < 0 || dragFrom === to) return;
+						const [item] = this.state.models.splice(dragFrom, 1);
+						this.state.models.splice(to, 0, item);
+						this.renderModels();
+					};
+
+					sync();
 				});
 			}
-			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.selectedProvider = pid; this.render(); }
-			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.selectedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); }
+			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.expandedProvider = pid; this.renderProviderList(); this.renderModels(); }
+			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); }
 			saveAIConfig(){
 				this.GM.setValue('providers', this.state.providers);
 				this.GM.setValue('models', this.state.models.filter(m => m.name && m.providerId));
@@ -231,6 +275,7 @@
 			}
 			renderSites(){ const sites = window.AnswerIT_Config?.supportedSites || []; $('#sitesGrid').innerHTML = sites.map(s => `<a class="site-card" href="https://${(s.urls?.[0] || '').replace(/^https?:\/\//,'')}" target="_blank"><div class="site-favicon">🌐</div><h3>${s.name}</h3></a>`).join(''); }
 		}
+
 		new ConfigManager();
 	</script>
 </body>

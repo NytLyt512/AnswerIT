@@ -35,7 +35,7 @@ const PRESET_PROVIDER_SEED = [
 	{ id: 'gemini', name: 'Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', page: 'https://aistudio.google.com/app/apikey' },
 	{ id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1', page: 'https://console.groq.com/keys' },
 	{ id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', page: 'https://openrouter.ai/keys' },
-	{ id: 'nvidia', name: 'NVIDIA NIM', endpoint: 'https://integrate.api.nvidia.com/v1', page: 'https://build.nvidia.com/' },
+	{ id: 'nvidia', name: 'NVIDIA NIM', endpoint: 'https://integrate.api.nvidia.com/v1', page: 'https://build.nvidia.com/settings/api-keys' },
 	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' }
 ];
 
@@ -70,7 +70,7 @@ if (versionLessThan(prevVersion, GM_info.script.version)) {
 		const oldApiKeys = GM_getValue('apiKeys', {});
 		const providers = GM_getValue('providers', {});
 		const models = GM_getValue('models', []);
-		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, useResponsesApi: false, reasoningEffort: 'none' });
+		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, reasoningEffort: 'none' });
 
 		if (!Object.keys(providers).length) {
 			const seed = Object.fromEntries(PRESET_PROVIDER_SEED.map(p => [p.id, { ...p, apiKey: oldApiKeys[p.id] || '', enabled: !!oldApiKeys[p.id], headers: {} }]));
@@ -80,7 +80,6 @@ if (versionLessThan(prevVersion, GM_info.script.version)) {
 		if (!aiSettings || typeof aiSettings !== 'object') {
 			GM_setValue('aiSettings', {
 				enableFollowups: false,
-				useResponsesApi: false,
 				reasoningEffort: 'none',
 			});
 		}
@@ -108,8 +107,8 @@ const config = {
 	/** @type {Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
 	models: GM_getValue('models', []),
 
-	/** @type {{ enableFollowups: boolean, useResponsesApi: boolean, reasoningEffort: 'high'|'med'|'low'|'none' }} */
-	aiSettings: Object.assign({ enableFollowups: false, useResponsesApi: false, reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
+	/** @type {{ enableFollowups: boolean, reasoningEffort: 'high'|'med'|'low'|'none' }} */
+	aiSettings: Object.assign({ enableFollowups: false, reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
@@ -477,8 +476,10 @@ const AIProviders = {
 				const splitThoughtMarkup = (text = '') => {
 					let i = 0;
 					while (i < text.length) {
-						if (text.startsWith('<thought>', i) || text.startsWith('<think>', i)) { inThoughtTag = true; i += 9; continue; }
-						if (text.startsWith('</thought>', i) || text.startsWith('</think>', i)) { inThoughtTag = false; i += 10; continue; }
+						if (text.startsWith('<thought>', i)) { inThoughtTag = true; i += 9; continue; }
+						if (text.startsWith('<think>', i)) { inThoughtTag = true; i += 7; continue; }
+						if (text.startsWith('</thought>', i)) { inThoughtTag = false; i += 10; continue; }
+						if (text.startsWith('</think>', i)) { inThoughtTag = false; i += 8; continue; }
 						const ch = text[i++];
 						if (inThoughtTag) reasoning += ch; else answer += ch;
 					}
@@ -535,8 +536,7 @@ const AIProviders = {
 			model: model.name,
 			messages,
 			stream: true,
-			...(model.options || {}),
-			...(config.aiSettings.useResponsesApi ? { response_format: { type: 'text' } } : {})
+			...(model.options || {})
 		};
 		if (reasoningEffort && payload.reasoning_effort === undefined) payload.reasoning_effort = reasoningEffort;
 		return AIProviders._BaseProvider.streamResponse(
@@ -756,8 +756,8 @@ const AIState = {
 		const modelState = this.getModel(questionId, modelName);
 		this.getQuestion(questionId).lastUsedModel = modelName; // Set last used model to current
 
-		// Check cache unless force retry
-		if (!forceRetry && modelState.status === 'success') {
+		// Check cache unless force retry (follow-up mode always creates a new turn)
+		if (!forceRetry && !config.aiSettings.enableFollowups && modelState.status === 'success') {
 			this.updateModel(questionId, modelName, {});
 			return modelState.answer;
 		}
@@ -776,17 +776,18 @@ const AIState = {
 			const provider = model.provider;
 			const modelCtx = this.getModel(questionId, modelName);
 			const history = config.aiSettings.enableFollowups ? modelCtx.messages || [] : [];
+			const userTurn = { role: 'user', content: questionItem.slice(0, 20000) };
 			const out = await AIProviders.call(model, questionItem, provider, (partial) => {
 				if (!modelCtx.reasoningStartAt && partial.reasoning?.trim()) modelCtx.reasoningStartAt = Date.now();
 				this.updateModel(questionId, modelName, { answer: partial.answer, reasoning: partial.reasoning });
 			}, history);
-			if (config.aiSettings.enableFollowups) modelCtx.messages = [...history, { role: 'user', content: questionItem.slice(0, 20000) }, { role: 'assistant', content: out.answer }].slice(-12);
+			if (config.aiSettings.enableFollowups) modelCtx.messages = [...history, userTurn, { role: 'assistant', content: out.answer }].slice(-18);
 
 			const timeTaken = Date.now() - modelState.startTime;
 			const completedGen = {
 				answer: out.answer,
 				reasoning: out.reasoning || '',
-				metadata: `Model: ${modelName} | Streamed (${timeTaken} ms)`,
+				metadata: `Streamed (${timeTaken} ms): ${modelName}`,
 				timeTaken,
 				reasoningStartAt: modelCtx.reasoningStartAt,
 				reasoningEndAt: modelCtx.reasoningStartAt ? Date.now() : null,
@@ -856,7 +857,14 @@ function createPopupUI() {
 			</div>
 
 			<div id="ait-custom-prompt-container">
-				<label id="ait-custom-prompt-label" data-action="controls.toggleCustomPrompt">Custom Prompt</label>
+				<div id="ait-custom-prompt-row">
+					<label id="ait-custom-prompt-label" data-action="controls.toggleCustomPrompt">Custom Prompt</label>
+					<span id="ait-prompt-tools">
+						<button id="ait-effort-toggle" title="Reasoning effort: ${config.aiSettings.reasoningEffort}" data-action="controls.toggleReasoningEffort">${config.aiSettings.reasoningEffort}</button>
+						<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.aiSettings.enableFollowups ? '🧠' : '🫧'}</button>
+						<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
+					</span>
+				</div>
 				<textarea id="ait-custom-prompt" placeholder="Enter custom instructions here"></textarea>
 			</div>
 
@@ -878,11 +886,6 @@ function createPopupUI() {
 
 		<div id="ait-popup-footer">
 			<span id="ait-status-text">Ready</span>
-			<span id="ait-followup-controls">
-				<button id="ait-effort-toggle" title="Reasoning effort: ${config.aiSettings.reasoningEffort}" data-action="controls.toggleReasoningEffort">${config.aiSettings.reasoningEffort}</button>
-				<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.aiSettings.enableFollowups ? '🧠' : '🫧'}</button>
-				<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
-			</span>
 			<span id="ait-hotkey-info">Press ${config.hotkey.modifier.toUpperCase()}+${config.hotkey.key.toUpperCase()} to toggle</span>
 		</div>
 	`;	// data-action attributes will be used to bind event listeners later (its a workaround for csp in sites like linkedin learning)
@@ -1042,8 +1045,13 @@ function createPopupUI() {
 			if (!qnId || !modelName) return;
 			const m = AIState.getModel(qnId, modelName);
 			m.messages = [];
+			m.generations = [];
+			m.genIndex = -1;
 			m.reasoning = '';
+			m.answer = '';
 			if (popup.querySelector('#ait-thought-body')) popup.querySelector('#ait-thought-body').value = '';
+			if (popup.outputArea) popup.outputArea.value = '';
+			AIState.syncGenerationNav(m);
 		}
 	};
 
@@ -1451,6 +1459,7 @@ function exposeConfigToPage() {
 		presetProviders: PRESET_PROVIDERS,
 		GM_getValue,
 		GM_setValue,
+		GM_fetch
 	};
 	window.AnswerIT_Config = obj;
 	unsafeWindow.AnswerIT_Config = obj; // For compatibility with unsafeWindow
@@ -1594,9 +1603,9 @@ GM_addStyle(`
 	#ait-popup-content { padding: 15px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 
 	/* Flat top-4 model row */
-	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; }
+	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; }
+	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: visible; }
 	.ait-model-button.shortcut { padding-bottom: 13px; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;	}
@@ -1614,17 +1623,21 @@ GM_addStyle(`
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
 	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
-	.ait-shortcut-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 10002; min-width: 170px; display: none; flex-direction: column; gap: 3px; background: color-mix(in srgb, var(--bg-main) 90%, #6f88ff 10%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
+	.ait-shortcut-popover { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 10002; width: 230px; max-height: 180px; overflow-y: auto; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
 	.ait-model-button.shortcut:hover .ait-shortcut-popover { display: flex; }
-	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 4px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 5px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: normal; line-height: 1.2; }
 	.ait-shortcut-popover > button:hover { background: rgba(140,160,255,.15); }
 	@keyframes spin { to { transform: rotate(360deg); } }
 
 	#ait-custom-prompt-container { margin-top: 15px; margin-bottom: 5px; display: flex; flex-direction: column; opacity: 0.7; transition: opacity 0.3s ease; }
 	#ait-custom-prompt-container:hover { opacity: 1; }
-	#ait-custom-prompt-label { font-size: 0.85em; color: var(--color-subtitle); margin-bottom: 4px; display: flex; align-items: center; cursor: pointer; }
+	#ait-custom-prompt-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+	#ait-custom-prompt-label { font-size: 0.85em; color: var(--color-subtitle); display: flex; align-items: center; cursor: pointer; }
 	#ait-custom-prompt-label::before { content: "▶"; font-size: 0.8em; margin-right: 5px; transition: transform 0.3s ease; }
 	#ait-custom-prompt-label.expanded::before { transform: rotate(90deg); }
+	#ait-prompt-tools { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+	#ait-prompt-tools > button { border: 1px solid var(--border-color); background: var(--bg-main); color: var(--color-text); border-radius: 6px; height: 22px; min-width: 24px; padding: 0 7px; cursor: pointer; font-size: 11px; }
+	#ait-prompt-tools > #ait-effort-toggle { border-radius: 999px; text-transform: lowercase; background: color-mix(in srgb, var(--bg-main) 88%, #7b97ff 12%); }
 	#ait-custom-prompt { width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; min-height: 60px; display: none; background-color: var(--bg-textarea); color: var(--color-text); }
 	#ait-custom-prompt.visible { display: block; }
 	
@@ -1648,9 +1661,6 @@ GM_addStyle(`
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
-	#ait-followup-controls { display: inline-flex; gap: 6px; align-items: center; }
-	#ait-effort-toggle { border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-main) 88%, #7b97ff 12%); color: var(--color-text); border-radius: 999px; height: 22px; padding: 0 8px; font-size: 11px; cursor: pointer; text-transform: lowercase; }
-	#ait-followup-controls > button { border: 1px solid var(--border-color); background: var(--bg-main); color: var(--color-text); border-radius: 6px; height: 22px; width: 24px; cursor: pointer; font-size: 12px; }
 
 	#ait-reflector-status { position: fixed; bottom: 8px; right: 8px; background: rgba(0, 0, 0, 0.05); padding: 3px 6px; border-radius: 8px; font: 9px monospace; z-index: 10010; opacity: 0.6; transition: all 0.5s; }
 `);
