@@ -3,15 +3,15 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>AnswerIT v5 - OpenAI-Compatible Config</title>
+	<title>AnswerIT - Configurations</title>
 	<link rel="icon" href="https://i.pinimg.com/736x/d9/b5/a6/d9b5a64b2a0f432e41f611ddd410d8be.jpg">
 	<link rel="stylesheet" href="configure.css">
 </head>
 <body>
 	<div class="hero">
 		<button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
-		<h1>🎯 AnswerIT v5</h1>
-		<p>OpenAI-compatible providers • custom models • reasoning + follow-up controls</p>
+		<h1>🎯 AnswerIT</h1>
+		<p>Providers • custom models • generation controls</p>
 		<div id="detectionStatus" class="detection-status">🔍 Detecting userscript...</div>
 	</div>
 
@@ -20,7 +20,7 @@
 			<section class="card">
 				<div class="card-icon">🚀</div>
 				<h2>Quick Start</h2>
-				<p>v5 is provider-agnostic and model-first. No defaults — you choose your stack.</p>
+				<p>Provider-agnostic and model-first. No defaults — you choose your stack.</p>
 				<ol class="steps">
 					<li>Add a provider preset (Gemini, Groq, OpenRouter, NVIDIA, etc.) or create custom.</li>
 					<li>Paste API key + endpoint, then save.</li>
@@ -31,32 +31,6 @@
 					<a href="https://github.com/NytLyt512/issues/new" target="_blank" class="quick-link">🐛 Report issue</a>
 				</div>
 				<button class="btn btn-primary" id="installScript">⬇️ Install / Reinstall Userscript</button>
-			</section>
-
-			<section class="card">
-				<div class="card-icon">🧩</div>
-				<h2>Providers & Models</h2>
-				<p>Everything now flows through OpenAI-compatible APIs.</p>
-				<div id="apiStatus" class="status"></div>
-
-				<div class="subhead">Preset providers (free-first)</div>
-				<div id="presetProviderBar" class="chip-row"></div>
-
-				<div class="subhead row-head">
-					<span>Configured providers</span>
-					<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom provider</button>
-				</div>
-				<div id="providersList" class="stack"></div>
-
-				<div class="subhead row-head" style="margin-top:1rem;">
-					<span>Models (enabled order controls popup top-4)</span>
-					<button id="addModel" class="btn btn-secondary mini">+ Add model</button>
-				</div>
-				<div id="modelsList" class="stack"></div>
-
-				<div class="save-row">
-					<button id="saveAIConfig" class="btn btn-primary">💾 Save AI Config</button>
-				</div>
 			</section>
 
 			<section class="card">
@@ -79,11 +53,36 @@
 					</div>
 					<div class="toggle-grid">
 						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output</span></label>
-						<label class="toggle-label"><input type="checkbox" id="showReasoning" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Show reasoning panel</span></label>
 						<label class="toggle-label"><input type="checkbox" id="enableFollowups" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Enable follow-up memory</span></label>
 					</div>
 					<button type="submit" class="btn btn-primary">Save Preferences</button>
 				</form>
+			</section>
+
+			<section class="card">
+				<div class="card-icon">🧩</div>
+				<h2>Providers & Models</h2>
+				<p>Everything flows through your configured providers.</p>
+				<div id="apiStatus" class="status"></div>
+
+				<div class="subhead">Preset providers (OpenAI-format endpoints)</div>
+				<div id="presetProviderBar" class="chip-row"></div>
+
+				<div class="subhead row-head">
+					<span>Configured providers</span>
+					<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom provider</button>
+				</div>
+				<div id="providersList" class="stack"></div>
+
+				<div class="subhead row-head" style="margin-top:1rem;">
+					<span>Models (enabled order controls popup top-4)</span>
+					<button id="addModel" class="btn btn-secondary mini">+ Add model</button>
+				</div>
+				<div id="modelsList" class="stack"></div>
+
+				<div class="save-row">
+					<button id="saveAIConfig" class="btn btn-primary">💾 Save AI Config</button>
+				</div>
 			</section>
 		</div>
 
@@ -101,15 +100,15 @@
 			{ id:'groq', name:'Groq', endpoint:'https://api.groq.com/openai/v1', page:'https://console.groq.com/keys' },
 			{ id:'openrouter', name:'OpenRouter', endpoint:'https://openrouter.ai/api/v1', page:'https://openrouter.ai/keys' },
 			{ id:'nvidia', name:'NVIDIA NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/' },
-			{ id:'openai', name:'OpenAI', endpoint:'https://api.openai.com/v1', page:'https://platform.openai.com/api-keys' },
-			{ id:'anthropic', name:'Anthropic', endpoint:'https://api.anthropic.com/v1', page:'https://console.anthropic.com/settings/keys' }
+			{ id:'openai', name:'OpenAI', endpoint:'https://api.openai.com/v1', page:'https://platform.openai.com/api-keys' }
 		];
 		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.display = 'flex'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
 
-		class ConfigV5 {
+		class ConfigManager {
 			constructor(){
 				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue };
-				this.state = { providers:{}, models:[], flags:{ showReasoning:true, enableFollowups:false, useResponsesApi:false } };
+				this.state = { providers:{}, models:[] };
+				this.aiSettings = { enableFollowups:false, useResponsesApi:false };
 				this.theme = localStorage.getItem('pageTheme') || 'light';
 				this.bind(); this.applyTheme(); this.detect();
 			}
@@ -146,15 +145,22 @@
 			load(){
 				const g = this.GM.getValue;
 				if (!g) return;
-				const o = g('openaiCompat', null);
-				this.state = o?.providers && Array.isArray(o?.models) ? o : { providers:{}, models:[], flags:{ showReasoning:true, enableFollowups:false, useResponsesApi:false } };
+				const old = g('openaiCompat', null);
+				const providers = g('providers', null), models = g('models', null);
+				this.state = {
+					providers: providers && typeof providers === 'object' ? providers : (old?.providers || {}),
+					models: Array.isArray(models) ? models : (Array.isArray(old?.models) ? old.models : []),
+				};
+				this.aiSettings = Object.assign({ enableFollowups:false, useResponsesApi:false }, g('aiSettings', null) || {
+					enableFollowups: !!old?.flags?.enableFollowups,
+					useResponsesApi: !!old?.flags?.useResponsesApi,
+				});
 				if (!Object.keys(this.state.providers).length) PRESET.forEach(p => this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} });
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
 				$('#theme').value = g('theme', 'light');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
-				$('#showReasoning').checked = !!(this.state.flags?.showReasoning ?? true);
-				$('#enableFollowups').checked = !!(this.state.flags?.enableFollowups ?? false);
+				$('#enableFollowups').checked = !!this.aiSettings.enableFollowups;
 			}
 			render(){ this.renderPresetBar(); this.renderProviders(); this.renderModels(); }
 			renderPresetBar(){
@@ -176,7 +182,7 @@
 							<input class="form-input mini name" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
 							<label class="switch"><input type="checkbox" class="enabled" ${p.enabled ? 'checked' : ''}><span>Enabled</span></label>
 						</div>
-						<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint (OpenAI compatible)">
+						<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
 						<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
 						<div class="quick-links">
 							${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}
@@ -225,16 +231,18 @@
 			addCustomProvider(){ const pid = `custom-${id().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.renderProviders(); }
 			addModel(providerId){ this.state.models.push({ id:id(), name:'', displayName:'', providerId: providerId || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{} }); this.renderModels(); }
 			saveAIConfig(){
-				this.state.flags = { ...this.state.flags, showReasoning: $('#showReasoning').checked, enableFollowups: $('#enableFollowups').checked };
+				this.aiSettings = { ...this.aiSettings, enableFollowups: $('#enableFollowups').checked };
 				this.state.models = this.state.models.filter(m => m.name && m.providerId);
-				this.GM.setValue('openaiCompat', this.state);
+				this.GM.setValue('providers', this.state.providers);
+				this.GM.setValue('models', this.state.models);
+				this.GM.setValue('aiSettings', this.aiSettings);
 				const apiKeys = Object.fromEntries(Object.values(this.state.providers).filter(p => p.apiKey).map(p => [p.id, p.apiKey]));
 				this.GM.setValue('apiKeys', apiKeys); // back-compat
 				status($('#apiStatus'), `✅ Saved ${Object.keys(this.state.providers).length} providers and ${this.state.models.length} models`, 'success');
 			}
 			savePrefs(){
-				this.state.flags = { ...this.state.flags, showReasoning: $('#showReasoning').checked, enableFollowups: $('#enableFollowups').checked };
-				this.GM.setValue('openaiCompat', this.state);
+				this.aiSettings = { ...this.aiSettings, enableFollowups: $('#enableFollowups').checked };
+				this.GM.setValue('aiSettings', this.aiSettings);
 				this.GM.setValue('hotkey', { key: $('#hotkey').value, modifier: 'alt' });
 				this.GM.setValue('theme', $('#theme').value);
 				this.GM.setValue('makeAIOutputEditable', $('#makeAIOutputEditable').checked);
@@ -246,7 +254,7 @@
 			}
 		}
 
-		new ConfigV5();
+		new ConfigManager();
 	</script>
 </body>
 </html>

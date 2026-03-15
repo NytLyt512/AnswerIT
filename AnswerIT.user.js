@@ -31,27 +31,7 @@
 // to try running on generic/unsupported page, add the following custom @match rule:
 // @match        *://*/*
 
-// --- track last version to handle version incompatible changes ---
-if (GM_info.script.version > GM_getValue('script_version', '0')) {
-	GM_setValue('script_version', GM_info.script.version);
-
-	// --- v5.0.0 ---
-	
-
-	// --- v4.0.0 ---
-	GM_deleteValue('hotkey'); // string -> { key: string, modifier: string }
-	GM_deleteValue('reflector'); // new reflector
-	// migrate to multi-provider API keys
-	const oldGeminiKey = GM_getValue('geminiApiKey');
-	if (oldGeminiKey) {
-		const apiKeys = GM_getValue('apiKeys', {});
-		apiKeys.gemini = oldGeminiKey;
-		GM_setValue('apiKeys', apiKeys);
-		GM_deleteValue('geminiApiKey');
-	}
-}
-
-const PRESET_PROVIDERS = [
+const PRESET_PROVIDER_SEED = [
 	{ id: 'gemini', name: 'Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', page: 'https://aistudio.google.com/app/apikey' },
 	{ id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1', page: 'https://console.groq.com/keys' },
 	{ id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', page: 'https://openrouter.ai/keys' },
@@ -60,28 +40,66 @@ const PRESET_PROVIDERS = [
 	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/settings/keys' }
 ];
 
-const _mkProviderMap = () => Object.fromEntries(PRESET_PROVIDERS.map(p => [p.id, { ...p, apiKey: '', enabled: false, headers: {} }]));
-const _migrateCompatConfig = () => {
-	const old = GM_getValue('apiKeys', {}), curr = GM_getValue('openaiCompat', null);
-	if (curr?.providers && Array.isArray(curr?.models)) return curr;
-	const providers = _mkProviderMap();
-	Object.entries(old || {}).forEach(([id, apiKey]) => {
-		if (!apiKey) return;
-		const base = providers[id] || { id, name: id, endpoint: 'https://api.openai.com/v1', page: '', apiKey: '', enabled: false, headers: {}, custom: true };
-		providers[id] = { ...base, apiKey, enabled: true };
-	});
-	const next = {
-		providers,
-		models: [],
-		flags: {
-			showReasoning: true,
-			enableFollowups: false,
-			useResponsesApi: false,
-		}
-	};
-	GM_setValue('openaiCompat', next);
-	return next;
+const versionLessThan = (a = '0', b = '0') => {
+	const pa = a.split('.').map(n => parseInt(n) || 0), pb = b.split('.').map(n => parseInt(n) || 0), len = Math.max(pa.length, pb.length);
+	for (let i = 0; i < len; i++) {
+		const x = pa[i] || 0, y = pb[i] || 0;
+		if (x < y) return true;
+		if (x > y) return false;
+	}
+	return false;
 };
+
+// --- track last version to handle version incompatible changes ---
+const prevVersion = GM_getValue('script_version', '0');
+if (versionLessThan(prevVersion, GM_info.script.version)) {
+	// --- v4.0.0 ---
+	if (versionLessThan(prevVersion, '4.0.0')) {
+		GM_deleteValue('hotkey'); // string -> { key: string, modifier: string }
+		GM_deleteValue('reflector'); // new reflector
+		const oldGeminiKey = GM_getValue('geminiApiKey');
+		if (oldGeminiKey) {
+			const apiKeys = GM_getValue('apiKeys', {});
+			apiKeys.gemini = oldGeminiKey;
+			GM_setValue('apiKeys', apiKeys);
+			GM_deleteValue('geminiApiKey');
+		}
+	}
+
+	// --- v5.0.0 ---
+	if (versionLessThan(prevVersion, '5.0.0')) {
+		const oldCompat = GM_getValue('openaiCompat', null);
+		const oldApiKeys = GM_getValue('apiKeys', {});
+		const providers = GM_getValue('providers', {});
+		const models = GM_getValue('models', []);
+		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, useResponsesApi: false });
+
+		if (!Object.keys(providers).length) {
+			if (oldCompat?.providers && typeof oldCompat.providers === 'object') {
+				GM_setValue('providers', oldCompat.providers);
+			} else {
+				const seed = Object.fromEntries(PRESET_PROVIDER_SEED.map(p => [p.id, { ...p, apiKey: oldApiKeys[p.id] || '', enabled: !!oldApiKeys[p.id], headers: {} }]));
+				GM_setValue('providers', seed);
+			}
+		}
+		if (!Array.isArray(models) || !models.length) {
+			if (Array.isArray(oldCompat?.models)) GM_setValue('models', oldCompat.models);
+		}
+		if (!aiSettings || typeof aiSettings !== 'object') {
+			GM_setValue('aiSettings', {
+				enableFollowups: !!oldCompat?.flags?.enableFollowups,
+				useResponsesApi: !!oldCompat?.flags?.useResponsesApi,
+			});
+		}
+		if (oldCompat) GM_deleteValue('openaiCompat');
+	}
+
+	GM_setValue('script_version', GM_info.script.version);
+}
+
+const PRESET_PROVIDERS = PRESET_PROVIDER_SEED;
+
+const _defaultProviders = () => Object.fromEntries(PRESET_PROVIDERS.map(p => [p.id, { ...p, apiKey: '', enabled: false, headers: {} }]));
 
 /**
  * -----------------------------------
@@ -92,8 +110,14 @@ const config = {
 	/** @type {{ [provider: string]: string }} */
 	apiKeys: GM_getValue("apiKeys", {}),	// can add multiple by separating with commas
 
-	/** @type {{ providers: Record<string, {id:string,name:string,endpoint:string,page:string,apiKey:string,enabled:boolean,headers:Record<string,string>,custom?:boolean}>, models: Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string}>, flags: { showReasoning: boolean, enableFollowups: boolean, useResponsesApi: boolean } }} */
-	openaiCompat: _migrateCompatConfig(),
+	/** @type {{ [id: string]: {id:string,name:string,endpoint:string,page:string,apiKey:string,enabled:boolean,headers:Record<string,string>,custom?:boolean} }} */
+	providers: Object.assign(_defaultProviders(), GM_getValue('providers', {})),
+
+	/** @type {Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
+	models: GM_getValue('models', []),
+
+	/** @type {{ enableFollowups: boolean, useResponsesApi: boolean }} */
+	aiSettings: Object.assign({ enableFollowups: false, useResponsesApi: false }, GM_getValue('aiSettings', {})),
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
@@ -110,7 +134,7 @@ const config = {
 	autoRun: false, // Default auto-run to false to avoid wasting api calls
 };
 
-Object.values(config.openaiCompat.providers || {}).forEach(p => { if (p?.apiKey) config.apiKeys[p.id] = p.apiKey; });
+Object.values(config.providers || {}).forEach(p => { if (p?.apiKey) config.apiKeys[p.id] = p.apiKey; });
 
 // --- Website Configurations ---
 const websites = [
@@ -181,17 +205,17 @@ const websites = [
 ];
 
 // --- AI Models Declarations ---
-const getConfiguredModels = () => (config.openaiCompat?.models || [])
+const getConfiguredModels = () => (config.models || [])
 	.filter(m => m?.name && m?.providerId && m?.enabled)
 	.slice(0, 4)
 	.map((m, i) => ({
 		id: m.id || `${m.providerId}:${m.name}:${i}`,
 		name: m.name,
 		displayName: m.displayName || m.name.split('/').pop().slice(0, 14),
-		subtitle: `${(config.openaiCompat.providers[m.providerId]?.name || m.providerId)} • OpenAI-compatible`,
+		subtitle: `${(config.providers[m.providerId]?.name || m.providerId)}`,
 		order: i,
 		color: m.color || ['#D2F8E5', '#E8E6FF', '#E5F7FF', '#FFE5F0'][i % 4],
-		tooltip: `${m.name} via ${config.openaiCompat.providers[m.providerId]?.endpoint || 'custom endpoint'}`,
+		tooltip: `${m.name} via ${config.providers[m.providerId]?.endpoint || 'custom endpoint'}`,
 		provider: m.providerId,
 		options: m.options || {}
 	}));
@@ -445,7 +469,7 @@ const AIProviders = {
 	},
 
 	_BaseProvider: {
-		async streamOpenAI(url, headers, payload, onProgress) {
+		async streamResponse(url, headers, payload, onProgress) {
 			return new Promise((resolve, reject) => {
 				let answer = '', reasoning = '', processed = 0;
 				const pickReasoning = d => d?.reasoning || d?.reasoning_content || d?.reasoningText || d?.reasoning?.text || d?.thinking || '';
@@ -476,7 +500,7 @@ const AIProviders = {
 	},
 
 	async call(model, questionItem, provider, onProgress, contextMessages = []) {
-		const p = config.openaiCompat.providers?.[provider];
+		const p = config.providers?.[provider];
 		if (!p?.endpoint || !p?.apiKey) throw new Error(`Missing provider config for ${provider}`);
 		const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: 'image_url', image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
 		const content = contentParts.map(part => part.text ? { type: 'text', text: part.text } : part);
@@ -488,12 +512,12 @@ const AIProviders = {
 		const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}`, ...(p.headers || {}) };
 		if (provider === 'openrouter') {
 			headers['HTTP-Referer'] = location.origin;
-			headers['X-Title'] = 'AnswerIT v5';
+			headers['X-Title'] = 'AnswerIT';
 		}
-		return AIProviders._BaseProvider.streamOpenAI(
+		return AIProviders._BaseProvider.streamResponse(
 			`${p.endpoint.replace(/\/$/, '')}/chat/completions`,
 			headers,
-			{ model: model.name, messages, stream: true, ...(model.options || {}), ...(config.openaiCompat.flags?.useResponsesApi ? { response_format: { type: 'text' } } : {}) },
+			{ model: model.name, messages, stream: true, ...(model.options || {}), ...(config.aiSettings.useResponsesApi ? { response_format: { type: 'text' } } : {}) },
 			onProgress
 		);
 	}
@@ -524,9 +548,44 @@ const AIState = {
 	getModel(qnId, modelName) {
 		const qn = this.getQuestion(qnId);
 		if (!qn.models[modelName]) {
-			qn.models[modelName] = { answer: "", reasoning: "", status: "idle", metadata: "", startTime: null, messages: [] };
+			qn.models[modelName] = {
+				answer: "", reasoning: "", status: "idle", metadata: "", startTime: null,
+				reasoningStartAt: null, reasoningEndAt: null,
+				messages: [], generations: [], genIndex: -1
+			};
 		}
 		return qn.models[modelName];
+	},
+
+	syncGenerationNav(model) {
+		const prev = popup.querySelector('#ait-gen-prev'), next = popup.querySelector('#ait-gen-next'), info = popup.querySelector('#ait-gen-info');
+		if (!prev || !next || !info) return;
+		const total = model?.generations?.length || 0, idx = model?.genIndex ?? -1;
+		prev.disabled = total < 2 || idx <= 0;
+		next.disabled = total < 2 || idx >= total - 1;
+		info.textContent = total ? `${idx + 1}/${total}` : '';
+	},
+
+	showGeneration(qnId, modelName, index) {
+		const model = this.getModel(qnId, modelName), total = model.generations.length;
+		if (!total) return;
+		model.genIndex = Math.max(0, Math.min(total - 1, index));
+		const g = model.generations[model.genIndex];
+		this.updateModel(qnId, modelName, {
+			answer: g.answer,
+			reasoning: g.reasoning || '',
+			metadata: g.metadata || model.metadata,
+			status: 'success',
+			reasoningStartAt: g.reasoningStartAt || null,
+			reasoningEndAt: g.reasoningEndAt || null,
+		});
+	},
+
+	changeGeneration(step) {
+		const qnId = this.currentQnId, qn = this.getQuestion(qnId || ''), modelName = qn.lastUsedModel;
+		if (!qnId || !modelName) return;
+		const model = this.getModel(qnId, modelName);
+		this.showGeneration(qnId, modelName, (model.genIndex < 0 ? model.generations.length - 1 : model.genIndex) + step);
 	},
 
 	// Update model state and sync to question level
@@ -568,10 +627,20 @@ const AIState = {
 
 		// Update output area and caption
 		popup.outputArea.value = qn.answer;
-		const reasoningArea = popup.querySelector('#ait-reasoning-textarea');
-		const reasoningWrap = popup.querySelector('#ait-reasoning-container');
-		if (reasoningArea) reasoningArea.value = qn.reasoning || '';
-		if (reasoningWrap) reasoningWrap.style.display = config.openaiCompat.flags?.showReasoning ? 'flex' : 'none';
+		const thoughtWrap = popup.querySelector('#ait-thoughts'), thoughtBody = popup.querySelector('#ait-thought-body'), thoughtSummary = popup.querySelector('#ait-thought-summary');
+		const activeModel = qn.lastUsedModel ? this.getModel(qnId, qn.lastUsedModel) : null;
+		const reasoning = qn.reasoning || '';
+		if (thoughtWrap && thoughtBody && thoughtSummary) {
+			thoughtBody.value = reasoning;
+			thoughtWrap.style.display = reasoning.trim() ? 'flex' : 'none';
+			const lastLine = (reasoning.split('\n').map(s => s.trim()).filter(Boolean).pop() || '').slice(0, 160);
+			const elapsed = (activeModel?.reasoningStartAt && (activeModel?.reasoningEndAt || Date.now())) ? ((activeModel.reasoningEndAt || Date.now()) - activeModel.reasoningStartAt) / 1000 : 0;
+			thoughtSummary.textContent = thoughtWrap.classList.contains('expanded')
+				? 'Hide thoughts'
+				: qn.status === 'generating'
+					? (lastLine || 'Thinking...')
+					: (elapsed > 0 ? `Thought for ${elapsed.toFixed(1)}s` : 'Thought complete');
+		}
 		// Auto-scroll if current scroll position is near the bottom (within 200px)
 		if (popup.outputArea.scrollTop >= popup.outputArea.scrollHeight - popup.outputArea.clientHeight - 200) {
 			popup.outputArea.scrollTop = popup.outputArea.scrollHeight;
@@ -601,6 +670,7 @@ const AIState = {
 			const modelState = this.getModel(qnId, model.name);
 			this.updateButton(button, modelState.status);
 		});
+		this.syncGenerationNav(activeModel);
 
 		// Update status text
 		const statusText = document.getElementById("ait-status-text");
@@ -671,25 +741,40 @@ const AIState = {
 			status: 'generating',
 			startTime: Date.now(),
 			answer: "",
-			reasoning: ""
+			reasoning: "",
+			reasoningStartAt: null,
+			reasoningEndAt: null,
 		});
 
 		try {
 			const provider = model.provider;
 			const modelCtx = this.getModel(questionId, modelName);
-			const history = config.openaiCompat.flags?.enableFollowups ? modelCtx.messages || [] : [];
+			const history = config.aiSettings.enableFollowups ? modelCtx.messages || [] : [];
 			const out = await AIProviders.call(model, questionItem, provider, (partial) => {
+				if (!modelCtx.reasoningStartAt && partial.reasoning?.trim()) modelCtx.reasoningStartAt = Date.now();
 				this.updateModel(questionId, modelName, { answer: partial.answer, reasoning: partial.reasoning });
 			}, history);
-			if (config.openaiCompat.flags?.enableFollowups) modelCtx.messages = [...history, { role: 'user', content: questionItem.slice(0, 20000) }, { role: 'assistant', content: out.answer }].slice(-12);
+			if (config.aiSettings.enableFollowups) modelCtx.messages = [...history, { role: 'user', content: questionItem.slice(0, 20000) }, { role: 'assistant', content: out.answer }].slice(-12);
 
 			const timeTaken = Date.now() - modelState.startTime;
-			this.updateModel(questionId, modelName, {
-				status: 'success',
+			const completedGen = {
 				answer: out.answer,
 				reasoning: out.reasoning || '',
 				metadata: `Model: ${modelName} | Streamed (${timeTaken} ms)`,
-				startTime: null
+				timeTaken,
+				reasoningStartAt: modelCtx.reasoningStartAt,
+				reasoningEndAt: modelCtx.reasoningStartAt ? Date.now() : null,
+				createdAt: Date.now(),
+			};
+			modelCtx.generations.push(completedGen);
+			modelCtx.genIndex = modelCtx.generations.length - 1;
+			this.updateModel(questionId, modelName, {
+				status: 'success',
+				answer: completedGen.answer,
+				reasoning: completedGen.reasoning,
+				metadata: completedGen.metadata,
+				startTime: null,
+				reasoningEndAt: completedGen.reasoningEndAt,
 			});
 
 			return out.answer;
@@ -751,9 +836,9 @@ function createPopupUI() {
 
 			<div id="ait-output-container">
 				<div id="ait-caption">Response metadata will appear here</div>
-				<div id="ait-reasoning-container" style="display:${config.openaiCompat.flags?.showReasoning ? 'flex' : 'none'};">
-					<div id="ait-reasoning-label">Reasoning</div>
-					<textarea id="ait-reasoning-textarea" placeholder="Model reasoning trace..." readonly></textarea>
+				<div id="ait-thoughts" class="collapsed" style="display:none;">
+					<button id="ait-thought-toggle" title="Expand thoughts" data-action="controls.toggleThoughts"><span id="ait-thought-summary">Thinking...</span><span id="ait-thought-caret">▸</span></button>
+					<div id="ait-thought-body-wrap"><textarea id="ait-thought-body" readonly></textarea></div>
 				</div>
 				<button id="ait-insert-button" data-action="handleInsert">Insert</button>
 				<textarea id="ait-output-textarea" placeholder="AI response will appear here..." ${GM_getValue('makeAIOutputEditable', false) ? '' : 'readonly'}></textarea>
@@ -762,8 +847,13 @@ function createPopupUI() {
 
 		<div id="ait-popup-footer">
 			<span id="ait-status-text">Ready</span>
+			<span id="ait-gen-controls">
+				<button id="ait-gen-prev" title="Previous regeneration" data-action="controls.prevGeneration">‹</button>
+				<span id="ait-gen-info"></span>
+				<button id="ait-gen-next" title="Next regeneration" data-action="controls.nextGeneration">›</button>
+			</span>
 			<span id="ait-followup-controls">
-				<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.openaiCompat.flags?.enableFollowups ? '🧠' : '🫧'}</button>
+				<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.aiSettings.enableFollowups ? '🧠' : '🫧'}</button>
 				<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
 			</span>
 			<span id="ait-hotkey-info">Press ${config.hotkey.modifier.toUpperCase()}+${config.hotkey.key.toUpperCase()} to toggle</span>
@@ -895,11 +985,19 @@ function createPopupUI() {
 
 			if (textarea.classList.contains("visible")) textarea.focus();
 		},
+		toggleThoughts: () => {
+			const wrap = popup.querySelector('#ait-thoughts');
+			if (!wrap) return;
+			wrap.classList.toggle('expanded');
+			wrap.classList.toggle('collapsed');
+		},
+		prevGeneration: () => AIState.changeGeneration(-1),
+		nextGeneration: () => AIState.changeGeneration(1),
 		toggleFollowups: () => {
-			config.openaiCompat.flags.enableFollowups = !config.openaiCompat.flags.enableFollowups;
-			GM_setValue('openaiCompat', config.openaiCompat);
+			config.aiSettings.enableFollowups = !config.aiSettings.enableFollowups;
+			GM_setValue('aiSettings', config.aiSettings);
 			const btn = popup.querySelector('#ait-toggle-followups');
-			if (btn) btn.textContent = config.openaiCompat.flags.enableFollowups ? '🧠' : '🫧';
+			if (btn) btn.textContent = config.aiSettings.enableFollowups ? '🧠' : '🫧';
 		},
 		clearThread: () => {
 			const qnId = AIState.currentQnId, modelName = AIState.getQuestion(qnId || '')?.lastUsedModel;
@@ -907,7 +1005,7 @@ function createPopupUI() {
 			const m = AIState.getModel(qnId, modelName);
 			m.messages = [];
 			m.reasoning = '';
-			if (popup.querySelector('#ait-reasoning-textarea')) popup.querySelector('#ait-reasoning-textarea').value = '';
+			if (popup.querySelector('#ait-thought-body')) popup.querySelector('#ait-thought-body').value = '';
 		}
 	};
 
@@ -1060,7 +1158,7 @@ function createPopupUI() {
 	if (!configuredModels.length) {
 		popup.querySelector('#ait-models-grid').innerHTML = `
 			<button class="ait-model-setup-cta" data-action="controls.openSetup" title="Configure models/providers">
-				⚙️ Configure OpenAI-Compatible Providers + Models
+				⚙️ Configure Providers + Models
 			</button>
 		`;
 		popup.controls.openSetup = () => window.open('https://NytLyt512.github.io/AnswerIT/configure.html', '_blank');
@@ -1178,7 +1276,7 @@ function hashCode(str) {
 }
 
 const openSetupPage = () => window.open("https://NytLyt512.github.io/AnswerIT/configure.html", "_blank");
-const getProvider = id => config.openaiCompat.providers?.[id] || null;
+const getProvider = id => config.providers?.[id] || null;
 const providerReady = id => {
 	const p = getProvider(id);
 	return !!(p?.enabled && p?.endpoint && p?.apiKey);
@@ -1305,7 +1403,9 @@ function exposeConfigToPage() {
 	const obj = {
 		supportedSites: websites,
 		reflector: config.reflector,
-		openaiCompat: config.openaiCompat,
+		providers: config.providers,
+		models: config.models,
+		aiSettings: config.aiSettings,
 		presetProviders: PRESET_PROVIDERS,
 		GM_getValue,
 		GM_setValue,
@@ -1457,7 +1557,7 @@ GM_addStyle(`
 	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;	}
-	.ait-model-status-container { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; }
+	.ait-model-status-container { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; position: absolute; right: 0px; top: 0px; }
 	.ait-model-progress { font-size: 14px; color: var(--spinner-color); animation: spin 2s linear infinite; display: none; }
 	.ait-model-button.loading { cursor: progress; opacity: 0.8; }
 	.ait-model-button.loading .ait-model-progress { display: block; }
@@ -1484,13 +1584,22 @@ GM_addStyle(`
 	#ait-insert-button:hover { opacity: 1; }
 
 	#ait-output-container { position: relative; margin-top: 10px; display: flex; flex-direction: column; flex-grow: 1; flex-shrink: 1; flex-basis: auto; overflow: auto; margin-top: auto; }
-	#ait-reasoning-container { display: flex; flex-direction: column; margin-bottom: 6px; }
-	#ait-reasoning-label { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; opacity: .65; margin-bottom: 3px; }
-	#ait-reasoning-textarea { width: 100%; min-height: 64px; max-height: 130px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical; opacity: .85; background: color-mix(in srgb, var(--bg-textarea) 88%, #8f9cff 12%); color: var(--color-text); }
+	#ait-thoughts { display: flex; flex-direction: column; margin-bottom: 6px; border: 1px solid var(--border-color); border-radius: 6px; background: color-mix(in srgb, var(--bg-textarea) 90%, #7d9bff 10%); }
+	#ait-thought-toggle { border: 0; background: transparent; color: var(--color-text); cursor: pointer; font-size: 11px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+	#ait-thought-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; text-align: left; }
+	#ait-thought-caret { opacity: .7; transition: transform .2s ease; }
+	#ait-thoughts.expanded #ait-thought-caret { transform: rotate(90deg); }
+	#ait-thought-body-wrap { display: none; border-top: 1px dashed var(--border-color); }
+	#ait-thoughts.expanded #ait-thought-body-wrap { display: block; }
+	#ait-thought-body { width: 100%; min-height: 74px; max-height: 160px; padding: 8px; border: 0; background: transparent; color: var(--color-text); font-family: monospace; font-size: 11px; resize: vertical; }
 	#ait-output-textarea { width: 100%; height: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; min-height: 150px; box-sizing: border-box; background-color: var(--bg-textarea); color: var(--color-text); }
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
+	#ait-gen-controls { display: inline-flex; align-items: center; gap: 4px; opacity: .75; }
+	#ait-gen-controls button { border: 1px solid var(--border-color); background: transparent; color: var(--color-text); border-radius: 6px; width: 20px; height: 20px; cursor: pointer; }
+	#ait-gen-controls button:disabled { opacity: .35; cursor: not-allowed; }
+	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; }
 	#ait-followup-controls { display: inline-flex; gap: 6px; align-items: center; }
 	#ait-followup-controls > button { border: 1px solid var(--border-color); background: var(--bg-main); color: var(--color-text); border-radius: 6px; height: 22px; width: 24px; cursor: pointer; font-size: 12px; }
 
