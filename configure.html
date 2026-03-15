@@ -1,470 +1,252 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AnswerIT - Setup & Configuration</title>
-    <link rel="icon" href="https://i.pinimg.com/736x/d9/b5/a6/d9b5a64b2a0f432e41f611ddd410d8be.jpg">
-    <link rel="stylesheet" href="configure.css">
-    <script src="https://unpkg.com/psl@latest/dist/psl.umd.cjs"></script>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AnswerIT v5 - OpenAI-Compatible Config</title>
+	<link rel="icon" href="https://i.pinimg.com/736x/d9/b5/a6/d9b5a64b2a0f432e41f611ddd410d8be.jpg">
+	<link rel="stylesheet" href="configure.css">
 </head>
 <body>
-    <div class="hero">
-        <button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
-        <h1>🎯 AnswerIT</h1>
-        <p>Setup your AI-powered answer generator and configure your preferences</p>
-        <div id="detectionStatus" class="detection-status">🔍 Detecting userscript...</div>
-    </div>
+	<div class="hero">
+		<button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
+		<h1>🎯 AnswerIT v5</h1>
+		<p>OpenAI-compatible providers • custom models • reasoning + follow-up controls</p>
+		<div id="detectionStatus" class="detection-status">🔍 Detecting userscript...</div>
+	</div>
 
-    <div class="container">
-        <div class="grid">
-            <div class="card">
-                <div class="card-icon">📚</div>
-                <h2>How to Use</h2>
-                <p>Get started with AnswerIT in just a few steps</p>
-                <div style="text-align: left; margin-top: 1rem;">
-                    <div style="margin-bottom: 1rem;"><strong style="color: var(--primary);">Step 1:</strong> Get API keys from AI providers (Gemini is free!)</div>
-                    <div style="margin-bottom: 1rem;"><strong style="color: var(--primary);">Step 2:</strong> Enter your API keys in the setup section</div>
-                    <div style="margin-bottom: 1rem;"><strong style="color: var(--primary);">Step 3:</strong> Configure your preferences</div>
-                    <div style="margin-bottom: 1rem;"><strong style="color: var(--primary);">Step 4:</strong> Use <span id="modifierKey">Alt</span> + [hotkey] on supported sites</div>
-                </div>
-                <div class="quick-links">
-                    <a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 Github Page</a>
-                    <a href="https://github.com/NytLyt512/issues/new?title=**Title%20of%20the%20issue**%20&body=**Describe%20the%20issue:**%0A%0A**Steps%20to%20reproduce:**%0A%0A**Expected%20behavior:**%0A%0A**Screenshots%20(optional):**%0A%0A**Environment:**%0A-%20Browser:%0A-%20OS:%0A" target="_blank" class="quick-link">🐛 Report Issues</a>
-                </div>
-                <button class="btn btn-primary" id="installScript" style="margin-top: 1rem;" onclick="window.open('https://github.com/NytLyt512/AnswerIT/raw/refs/heads/main/AnswerIT.user.js')">
-                    <span class="hidden">⬇️ Install UserScript</span>
-                    <span class="hidden" title="Click to reinstall">✅ Userscript Installed!!</span>
-                    <div class="spinner"></div>
-                </button>
-            </div>
+	<div class="container">
+		<div class="grid">
+			<section class="card">
+				<div class="card-icon">🚀</div>
+				<h2>Quick Start</h2>
+				<p>v5 is provider-agnostic and model-first. No defaults — you choose your stack.</p>
+				<ol class="steps">
+					<li>Add a provider preset (Gemini, Groq, OpenRouter, NVIDIA, etc.) or create custom.</li>
+					<li>Paste API key + endpoint, then save.</li>
+					<li>Create models and enable your top picks (only top 4 shown in popup).</li>
+				</ol>
+				<div class="quick-links">
+					<a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 GitHub</a>
+					<a href="https://github.com/NytLyt512/issues/new" target="_blank" class="quick-link">🐛 Report issue</a>
+				</div>
+				<button class="btn btn-primary" id="installScript">⬇️ Install / Reinstall Userscript</button>
+			</section>
 
-            <div class="card">
-                <div class="card-icon">🔑</div>
-                <h2>API Keys Setup</h2>
-                <p>Configure your AI provider API keys. You need at least one key to start generating answers.</p>
-                <div class="status" id="apiStatus"></div>
-                
-                <!-- Provider Tabs -->
-                <div class="tabs-container providers">
-                    <div class="tabs">
-                        <button class="tab-btn active" onclick="switchProvidersTab('gemini')">Gemini</button>
-                        <button class="tab-btn" onclick="switchProvidersTab('openai')">OpenAI</button>
-                        <button class="tab-btn" onclick="switchProvidersTab('anthropic')">Anthropic</button>
-                        <button class="tab-btn" onclick="switchProvidersTab('groq')">Groq</button>
-                    </div>
-                    <div class="tab-content active" id="gemini-tab">
-                        <div class="form-group">
-                            <label class="form-label">Gemini API Key</label>
-                            <input type="password" id="geminiApiKey" class="form-input" placeholder="Enter your Gemini API key..." autocomplete="off">
-                            <div class="help-text">Free tier with generous limits. Supports latest Gemini 2.5 models.</div>
-                            <div class="quick-links">
-                                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="quick-link">🔗 Get Free Gemini Key</a>
-                                <a data-provider="gemini" class="quick-link btn" onclick="cm.apiKey.test">🧪 Test Key</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tab-content" id="openai-tab">
-                        <div class="form-group">
-                            <label class="form-label">OpenAI API Key</label>
-                            <input type="password" id="openaiApiKey" class="form-input" placeholder="Enter your OpenAI API key..." autocomplete="off">
-                            <div class="help-text">Requires payment per token. Supports GPT-4o and GPT-4o Mini models.</div>
-                            <div class="quick-links">
-                                <a href="https://platform.openai.com/api-keys" target="_blank" class="quick-link">🔗 Get OpenAI Key</a>
-                                <a data-provider="openai" class="quick-link btn" onclick="cm.apiKey.test">🧪 Test Key</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tab-content" id="anthropic-tab">
-                        <div class="form-group">
-                            <label class="form-label">Anthropic API Key</label>
-                            <input type="password" id="anthropicApiKey" class="form-input" placeholder="Enter your Anthropic API key..." autocomplete="off">
-                            <div class="help-text">Requires payment per token. Supports Claude Sonnet 3.7 and 4.0 models.</div>
-                            <div class="quick-links">
-                                <a href="https://console.anthropic.com/account/keys" target="_blank" class="quick-link">🔗 Get Anthropic Key</a>
-                                <a data-provider="anthropic" class="quick-link btn" onclick="cm.apiKey.test">🧪 Test Key</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tab-content" id="groq-tab">
-                        <div class="form-group">
-                            <label class="form-label">Groq API Key</label>
-                            <input type="password" id="groqApiKey" class="form-input" placeholder="Enter your Groq API key..." autocomplete="off">
-                            <div class="help-text">Free tier available. Lightning-fast inference with Llama 3.3 70B and other models.</div>
-                            <div class="quick-links">
-                                <a href="https://console.groq.com/keys" target="_blank" class="quick-link">🔗 Get Free Groq Key</a>
-                                <a data-provider="groq" class="quick-link btn" onclick="cm.apiKey.test">🧪 Test Key</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn btn-primary" id="saveApiKey">
-                    <span id="saveApiKeyText">💾 Save This Key</span>
-                    <div class="spinner" id="saveApiKeySpinner" style="display: none;"></div>
-                </button>
-            </div>
+			<section class="card">
+				<div class="card-icon">🧩</div>
+				<h2>Providers & Models</h2>
+				<p>Everything now flows through OpenAI-compatible APIs.</p>
+				<div id="apiStatus" class="status"></div>
 
-            <div class="card">
-                <div class="card-icon">⚙️</div>
-                <h2>Preferences</h2>
-                <p>Customize your AnswerIT popup experience</p>
-                <div class="status" id="preferencesStatus"></div>
-                <form id="settingsForm">
-                    <div class="preferences-grid">
-                        <div class="form-group">
-                            <label class="form-label">🔥 Hotkey</label>
-                            <select id="hotkey" class="form-input">
-                                <option value="a"><span id="hotkeyModifier">Alt</span> + A</option>
-                                <option value="q"><span id="hotkeyModifier">Alt</span> + Q</option>
-                                <option value="z"><span id="hotkeyModifier">Alt</span> + Z</option>
-                                <option value="x"><span id="hotkeyModifier">Alt</span> + X</option>
-                            </select>
-                            <div class="help-text">Keyboard shortcut to toggle popup</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Default Theme</label>
-                            <select id="theme" class="form-input">
-                                <option value="light">Light</option>
-                                <option value="dark">Dark</option>
-                            </select>
-                            <div class="help-text">Choose your preferred theme for the popup</div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="makeAIOutputEditable" class="toggle-input">
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-text">Make AI Output Editable</span>
-                        </label>
-                        <div class="help-text">Allow editing within the AI-generated output textarea to be able to modify the response before inserting it.</div>
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="saveSettings">
-                        <span id="saveSettingsText">Save Settings</span>
-                        <div class="spinner" id="saveSettingsSpinner" style="display: none;"></div>
-                    </button>
-                </form>
-            </div>
+				<div class="subhead">Preset providers (free-first)</div>
+				<div id="presetProviderBar" class="chip-row"></div>
 
-            <!-- Reflector Mode Setup Section -->
-            <div class="card" id="reflectorCard">
-                <div class="card-icon">🖥️</div>
-                <h2>Reflector Mode Setup</h2>
-                <p>Mirror your host device's question area to another device in real time.<br>Use this section to set up and connect your devices.</p>
-                <div class="status" id="reflectorStatus"></div>
-                <div class="form-group">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="reflectorEnable" class="toggle-input">
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text">Enable Reflector Mode (Host)</span>
-                    </label>
-                    <div class="help-text">Turn on to start broadcasting your question area.</div>
-                </div>
-                <div id="reflectorOfferSection" style="display:none;">
-                    <label class="form-label">Your Offer (Host)</label>
-                    <textarea id="reflectorOffer" class="form-input" rows="4" readonly></textarea>
-                    <div style="margin:0.5rem 0;">
-                        <button class="btn btn-secondary" id="copyOfferBtn">Copy Offer</button>
-                        <button class="btn btn-secondary" id="showOfferQRBtn">Show QR</button>
-                        <span id="offerQRContainer" style="display:none; margin-left:1rem;"></span>
-                    </div>
-                    <div class="help-text">Share this offer with your reflector device (scan QR or copy text).</div>
-                </div>
-                <div id="reflectorAnswerSection" style="display:none; margin-top:1rem;">
-                    <label class="form-label">Paste Answer from Reflector Device</label>
-                    <textarea id="reflectorAnswer" class="form-input" rows="4" placeholder="Paste answer here..."></textarea>
-                    <button class="btn btn-primary" id="submitAnswerBtn" style="margin-top:0.5rem;">Submit Answer</button>
-                    <div class="help-text">Paste the answer code from the reflector device to complete the connection.</div>
-                </div>
-                <div id="reflectorStatusMsg" style="margin-top:1rem; font-weight:600;"></div>
-                <button class="btn btn-primary" id="gotoReflectorBtn" style="margin-top:2rem;">Open Reflector Page</button>
-            </div>
-        </div>
+				<div class="subhead row-head">
+					<span>Configured providers</span>
+					<button id="addCustomProvider" class="btn btn-secondary mini">+ Custom provider</button>
+				</div>
+				<div id="providersList" class="stack"></div>
 
-        <div class="sites-section">
-            <h2>🌐 Supported Learning Platforms</h2>
-            <p>AnswerIT works seamlessly with these platforms. Click any site to visit it directly.</p>
-            <div class="sites-grid" id="sitesGrid"></div>
-        </div>
-    </div>
+				<div class="subhead row-head" style="margin-top:1rem;">
+					<span>Models (enabled order controls popup top-4)</span>
+					<button id="addModel" class="btn btn-secondary mini">+ Add model</button>
+				</div>
+				<div id="modelsList" class="stack"></div>
 
-    <!-- Include jQuery from a CDN -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-    <script>
-        function showStatus(id, message, type) {
-            const $el = $(`#${id}`);
-            $el.text(message);
-            $el.attr('class', `status ${type}`);
-            $el.css('display', 'flex');
-            if (type === 'success') {
-                setTimeout(() => $el.css('display', 'none'), 5000);
-            }
-        }
+				<div class="save-row">
+					<button id="saveAIConfig" class="btn btn-primary">💾 Save AI Config</button>
+				</div>
+			</section>
 
-        function switchProvidersTab(tabName) {
-            // Update active tab button
-            $('.tab-btn').removeClass('active');
-            $(`.tab-btn[onclick*="${tabName}"]`).addClass('active');
-            
-            // Update active tab content
-            $('.tab-content').removeClass('active');
-            $(`#${tabName}-tab`).addClass('active');
-            
-            this.currentTab = tabName;
-            localStorage.setItem('apiTab', tabName);
-        }
-        switchProvidersTab(localStorage.getItem('apiTab') || 'gemini');
+			<section class="card">
+				<div class="card-icon">⚙️</div>
+				<h2>Preferences</h2>
+				<p>Popup behavior + generation options.</p>
+				<div id="preferencesStatus" class="status"></div>
+				<form id="settingsForm">
+					<div class="preferences-grid">
+						<div class="form-group">
+							<label class="form-label">Hotkey</label>
+							<select id="hotkey" class="form-input">
+								<option value="a">Alt + A</option><option value="q">Alt + Q</option><option value="z">Alt + Z</option><option value="x">Alt + X</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label class="form-label">Popup Theme</label>
+							<select id="theme" class="form-input"><option value="light">Light</option><option value="dark">Dark</option></select>
+						</div>
+					</div>
+					<div class="toggle-grid">
+						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output</span></label>
+						<label class="toggle-label"><input type="checkbox" id="showReasoning" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Show reasoning panel</span></label>
+						<label class="toggle-label"><input type="checkbox" id="enableFollowups" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Enable follow-up memory</span></label>
+					</div>
+					<button type="submit" class="btn btn-primary">Save Preferences</button>
+				</form>
+			</section>
+		</div>
 
-        class ConfigManager {
-            constructor() {
-                this.currentTheme = localStorage.getItem('pageTheme') || 'light';
-                this.isMac = !navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-                this.configDetected = false;
-                this.GM = {
-                    getValue: window.AnswerIT_Config?.GM_getValue,
-                    setValue: window.AnswerIT_Config?.GM_setValue,
-                };
-                this.theme.initTheme();
-                this.initEventListeners();
-                this.detectUserscript();
-            }
+		<section class="sites-section">
+			<h2>🌐 Supported Learning Platforms</h2>
+			<p>Auto-detected from userscript metadata.</p>
+			<div id="sitesGrid" class="sites-grid"></div>
+		</section>
+	</div>
 
-            theme = {
-                initTheme: () => {
-                    this.theme.applyTheme(this.currentTheme);
-                    const $toggle = $('#themeToggle');
-                    $toggle.text(this.currentTheme === 'light' ? '🌙' : '☀️');
-                    $toggle.attr('title', `Switch to ${this.currentTheme === 'light' ? 'dark' : 'light'} theme`);
-                },
-                toggleTheme: () => {
-                    this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-                    this.theme.applyTheme(this.currentTheme);
-                    const $toggle = $('#themeToggle');
-                    $toggle.text(this.currentTheme === 'light' ? '🌙' : '☀️');
-                    $toggle.attr('title', `Switch to ${this.currentTheme === 'light' ? 'dark' : 'light'} theme`);
-                },
-                applyTheme: (theme) => {
-                    document.documentElement.classList.toggle('dark', theme === 'dark');
-                    localStorage.setItem('pageTheme', theme);
-                }
-            }
+	<script>
+		const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)], id = () => (crypto.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+		const PRESET = [
+			{ id:'gemini', name:'Gemini', endpoint:'https://generativelanguage.googleapis.com/v1beta/openai', page:'https://aistudio.google.com/app/apikey' },
+			{ id:'groq', name:'Groq', endpoint:'https://api.groq.com/openai/v1', page:'https://console.groq.com/keys' },
+			{ id:'openrouter', name:'OpenRouter', endpoint:'https://openrouter.ai/api/v1', page:'https://openrouter.ai/keys' },
+			{ id:'nvidia', name:'NVIDIA NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/' },
+			{ id:'openai', name:'OpenAI', endpoint:'https://api.openai.com/v1', page:'https://platform.openai.com/api-keys' },
+			{ id:'anthropic', name:'Anthropic', endpoint:'https://api.anthropic.com/v1', page:'https://console.anthropic.com/settings/keys' }
+		];
+		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.display = 'flex'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
 
-            detectUserscript() {
-                console.log('[ConfigPage] Starting userscript detection...');
-                updateDetectionStatus('🔍 Detecting userscript...', '');
+		class ConfigV5 {
+			constructor(){
+				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue };
+				this.state = { providers:{}, models:[], flags:{ showReasoning:true, enableFollowups:false, useResponsesApi:false } };
+				this.theme = localStorage.getItem('pageTheme') || 'light';
+				this.bind(); this.applyTheme(); this.detect();
+			}
+			bind(){
+				$('#themeToggle').onclick = () => (this.theme = this.theme === 'light' ? 'dark' : 'light', this.applyTheme());
+				$('#installScript').onclick = () => window.open('https://github.com/NytLyt512/AnswerIT/raw/refs/heads/main/AnswerIT.user.js');
+				$('#addCustomProvider').onclick = () => this.addCustomProvider();
+				$('#addModel').onclick = () => this.addModel();
+				$('#saveAIConfig').onclick = () => this.saveAIConfig();
+				$('#settingsForm').onsubmit = e => (e.preventDefault(), this.savePrefs());
+			}
+			applyTheme(){
+				document.documentElement.classList.toggle('dark', this.theme === 'dark');
+				localStorage.setItem('pageTheme', this.theme);
+				$('#themeToggle').textContent = this.theme === 'dark' ? '☀️' : '🌙';
+			}
+			detect(){
+				let i=0,max=16;
+				const poll = () => {
+					i++;
+					if (window.AnswerIT_Config?.GM_getValue) return this.onReady();
+					$('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`;
+					if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000));
+					status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning');
+				};
+				poll();
+			}
+			onReady(){
+				status($('#detectionStatus'), '✅ Userscript connected', 'success');
+				this.load();
+				this.render();
+				this.renderSites();
+			}
+			load(){
+				const g = this.GM.getValue;
+				if (!g) return;
+				const o = g('openaiCompat', null);
+				this.state = o?.providers && Array.isArray(o?.models) ? o : { providers:{}, models:[], flags:{ showReasoning:true, enableFollowups:false, useResponsesApi:false } };
+				if (!Object.keys(this.state.providers).length) PRESET.forEach(p => this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} });
+				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
+				$('#hotkey').value = hotkey.key || 'a';
+				$('#theme').value = g('theme', 'light');
+				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
+				$('#showReasoning').checked = !!(this.state.flags?.showReasoning ?? true);
+				$('#enableFollowups').checked = !!(this.state.flags?.enableFollowups ?? false);
+			}
+			render(){ this.renderPresetBar(); this.renderProviders(); this.renderModels(); }
+			renderPresetBar(){
+				$('#presetProviderBar').innerHTML = PRESET.map(p => `<button class="chip" data-id="${p.id}">${p.name}</button>`).join('');
+				$$('#presetProviderBar .chip').forEach(b => b.onclick = () => {
+					const p = PRESET.find(x => x.id === b.dataset.id);
+					if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
+					this.renderProviders();
+				});
+			}
+			renderProviders(){
+				const wrap = $('#providersList');
+				wrap.innerHTML = '';
+				Object.values(this.state.providers).forEach(p => {
+					const row = document.createElement('div');
+					row.className = 'provider-card';
+					row.innerHTML = `
+						<div class="provider-head">
+							<input class="form-input mini name" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
+							<label class="switch"><input type="checkbox" class="enabled" ${p.enabled ? 'checked' : ''}><span>Enabled</span></label>
+						</div>
+						<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint (OpenAI compatible)">
+						<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
+						<div class="quick-links">
+							${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}
+							<button class="quick-link btn test">🧪 Test</button>
+							<button class="quick-link btn model">+ Model</button>
+							${p.custom ? '<button class="quick-link btn del">🗑 Remove</button>' : ''}
+						</div>`;
+					const sync = () => Object.assign(p, { name: row.querySelector('.name').value.trim(), endpoint: row.querySelector('.endpoint').value.trim(), apiKey: row.querySelector('.key').value.trim(), enabled: row.querySelector('.enabled').checked });
+					row.querySelectorAll('input').forEach(i => i.oninput = sync), sync();
+					row.querySelector('.model').onclick = e => (e.preventDefault(), sync(), this.addModel(p.id));
+					row.querySelector('.test').onclick = async e => {
+						e.preventDefault(); sync();
+						if (!p.endpoint || !p.apiKey) return status($('#apiStatus'), `Missing endpoint/key for ${p.name}`, 'warning');
+						status($('#apiStatus'), `Testing ${p.name}...`, 'info');
+						try {
+							const r = await fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
+							status($('#apiStatus'), r.ok ? `✅ ${p.name} is valid` : `❌ ${p.name} test failed (${r.status})`, r.ok ? 'success' : 'error');
+						} catch (err) { status($('#apiStatus'), `❌ ${p.name} test error: ${err.message}`, 'error'); }
+					};
+					const del = row.querySelector('.del'); if (del) del.onclick = e => (e.preventDefault(), delete this.state.providers[p.id], this.render());
+					wrap.appendChild(row);
+				});
+			}
+			renderModels(){
+				const providers = Object.values(this.state.providers), list = $('#modelsList');
+				list.innerHTML = this.state.models.map((m, idx) => `
+					<div class="model-row" data-idx="${idx}">
+						<label class="switch"><input class="en" type="checkbox" ${m.enabled ? 'checked' : ''}><span>On</span></label>
+						<input class="form-input mn" value="${(m.name || '').replace(/"/g,'&quot;')}" placeholder="model id e.g. gemini-2.5-flash">
+						<input class="form-input dn" value="${(m.displayName || '').replace(/"/g,'&quot;')}" placeholder="Display name">
+						<select class="form-input pv">${providers.map(p => `<option value="${p.id}" ${m.providerId === p.id ? 'selected' : ''}>${p.name || p.id}</option>`).join('')}</select>
+						<input class="form-input op" value="${JSON.stringify(m.options || {}).replace(/"/g,'&quot;')}" placeholder='options JSON e.g. {"reasoning_effort":"high"}'>
+						<button class="btn btn-secondary mini del">🗑</button>
+					</div>
+				`).join('') || '<div class="empty-note">No models yet. Add one to enable generation in popup.</div>';
+				$$('.model-row').forEach(row => {
+					const i = +row.dataset.idx, sync = () => {
+						let options = {};
+						try { options = JSON.parse(row.querySelector('.op').value || '{}'); } catch { options = {}; }
+						Object.assign(this.state.models[i], { enabled: row.querySelector('.en').checked, name: row.querySelector('.mn').value.trim(), displayName: row.querySelector('.dn').value.trim(), providerId: row.querySelector('.pv').value, options });
+					};
+					row.querySelectorAll('input,select').forEach(el => el.oninput = sync), sync();
+					row.querySelector('.del').onclick = e => (e.preventDefault(), this.state.models.splice(i, 1), this.renderModels());
+				});
+			}
+			addCustomProvider(){ const pid = `custom-${id().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.renderProviders(); }
+			addModel(providerId){ this.state.models.push({ id:id(), name:'', displayName:'', providerId: providerId || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{} }); this.renderModels(); }
+			saveAIConfig(){
+				this.state.flags = { ...this.state.flags, showReasoning: $('#showReasoning').checked, enableFollowups: $('#enableFollowups').checked };
+				this.state.models = this.state.models.filter(m => m.name && m.providerId);
+				this.GM.setValue('openaiCompat', this.state);
+				const apiKeys = Object.fromEntries(Object.values(this.state.providers).filter(p => p.apiKey).map(p => [p.id, p.apiKey]));
+				this.GM.setValue('apiKeys', apiKeys); // back-compat
+				status($('#apiStatus'), `✅ Saved ${Object.keys(this.state.providers).length} providers and ${this.state.models.length} models`, 'success');
+			}
+			savePrefs(){
+				this.state.flags = { ...this.state.flags, showReasoning: $('#showReasoning').checked, enableFollowups: $('#enableFollowups').checked };
+				this.GM.setValue('openaiCompat', this.state);
+				this.GM.setValue('hotkey', { key: $('#hotkey').value, modifier: 'alt' });
+				this.GM.setValue('theme', $('#theme').value);
+				this.GM.setValue('makeAIOutputEditable', $('#makeAIOutputEditable').checked);
+				status($('#preferencesStatus'), '✅ Preferences saved', 'success');
+			}
+			renderSites(){
+				const sites = window.AnswerIT_Config?.supportedSites || [];
+				$('#sitesGrid').innerHTML = sites.map(s => `<a class="site-card" href="https://${(s.urls?.[0] || '').replace(/^https?:\/\//,'')}" target="_blank"><div class="site-favicon">🌐</div><h3>${s.name}</h3></a>`).join('');
+			}
+		}
 
-                let attempts = 0, max = 15;
-                const poll = () => {
-                    attempts++;
-                    updateDetectionStatus(`🔍 Checking for userscript... (${attempts}/${max})`, '');
-                    if (window.AnswerIT_Config?.GM_getValue) {
-                        updateDetectionStatus('✅ Userscript connected!', 'success');
-                        $('#installScript > span').get(1).classList.remove('hidden');
-                        $('#installScript > .spinner').remove();
-                        onConfigDetected(this);
-                    } else if (attempts < max) {
-                        setTimeout(poll, Math.min(100 * 2 ** (attempts - 1), 2000));
-                    } else {
-                        updateDetectionStatus('⚠️ Couldn\'t detect userscript.', 'warning');
-                        $('#installScript > span').get(0).classList.remove('hidden');
-                    }
-                }; poll();
-                
-                function updateDetectionStatus(message, type) {
-                    const $status = $('#detectionStatus');
-                    $status.text(message);
-                    $status.attr('class', `detection-status ${type}`);
-                    // Hide status after successful connection
-                    if (type === 'success') setTimeout(() => $status.animate({ opacity: 0 }, 300, () => $status.hide()), 2000);
-                }
-
-                function onConfigDetected(ctx) {
-                    if (ctx.configDetected) return; // Prevent multiple calls
-                    ctx.configDetected = true;
-                    console.log('[ConfigPage] Initializing with config:', !!window.AnswerIT_Config);
-
-                    // Load Settings
-                    ctx.loadSettings();
-
-                    // Render Supported Sites
-                    const _renderSites = () => {
-                        const sites = window.AnswerIT_Config?.supportedSites || [];
-                        Promise.all(sites.map(async site => {
-                            let urlStr = (!/^https?:\/\//i.test(site.urls[0])) ? 'https://' + site.urls[0] : site.urls[0];
-                            let domain = (new URL(urlStr))?.hostname || urlStr.replace(/^https?:\/\//i, '').split('/')[0];
-                            const tld = psl.get(domain);
-                            const faviconUrls = [
-                                `https://${domain}/favicon.ico`,
-                                `https://${domain.replace(/^[^.]+\./, '')}/favicon.ico`,
-                                `https://www.google.com/s2/favicons?domain=${domain}&sz=32`,
-                            ];
-                            let favicon = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="8" fill="%23e5e7eb"/><text x="16" y="22" text-anchor="middle" font-size="18" fill="%23667eea" font-family="Arial">🌐</text></svg>';
-                            for (let url of faviconUrls) try {const res = await fetch(url, { method: 'HEAD', mode: 'no-cors' });if (res.ok || res.type === 'opaque') { favicon = url; break; }} catch { }
-                            const $card = $('<a>').addClass('site-card').attr('href', `https://${site.urls[0]}`).attr('target', '_blank').html(`<img class="site-favicon" src="${favicon}" alt="${site.name}"><h3>${site.name}</h3>`);
-                            $('#sitesGrid').append($card);
-                        }));
-                    }; _renderSites();
-                }
-            }
-
-            initEventListeners() {
-                $('#themeToggle').on('click', () => this.theme.toggleTheme());
-                $('#saveApiKey').on('click', (e) => { e.preventDefault(); this.apiKey.save(); });
-                $('#settingsForm').on('submit', (e) => { e.preventDefault(); this.saveSettings(); });
-                $('.providers a.quick-link.btn').on('click', (e) => { 
-                    e.preventDefault(); 
-                    const provider = $(e.target).data('provider');
-                    this.apiKey.test(provider); 
-                });
-                $('[id$="ApiKey"]').on('input', (e) => {
-                    const provider = e.target.id.replace('ApiKey', '');
-                    this.apiKey.validate(provider, $(e.target).val());
-                });
-            }
-
-            apiKey = {
-                validate: (provider, key) => {
-                    const $input = $(`#${provider}ApiKey`);
-                    if (!key) { $input.attr('class', 'form-input'); return false; }
-                    
-                    let valid = false;
-                    if (provider === 'gemini') {
-                        valid = /^AIza[0-9A-Za-z-_]{35}$/.test(key);
-                    } else if (provider === 'openai') {
-                        valid = /^sk-[a-zA-Z0-9]{48,}$/.test(key) || /^sk-proj-[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+$/.test(key);
-                    } else if (provider === 'anthropic') {
-                        valid = /^sk-ant-api03-[a-zA-Z0-9_-]{90,}$/.test(key);
-                    } else if (provider === 'groq') {
-                        valid = /^gsk_[a-zA-Z0-9]{52}$/.test(key);
-                    }
-                    
-                    $input.attr('class', valid ? 'form-input success' : 'form-input error');
-                    return valid;
-                },
-                test: async (provider) => {
-                    const apiKey = $(`#${provider}ApiKey`).val().trim();
-                    if (!apiKey) { 
-                        showStatus('apiStatus', `Please enter a ${provider} API key first!`, 'error'); 
-                        return; 
-                    }
-                    if (!this.apiKey.validate(provider, apiKey)) { 
-                        showStatus('apiStatus', `${provider} API key format invalid`, 'warning'); 
-                        return; 
-                    }
-                    
-                    showStatus('apiStatus', `Testing ${provider} API key...`, 'warning');
-                    
-                    try {
-                        let response;
-                        if (provider === 'gemini') {
-                            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-                        } else if (provider === 'openai') {
-                            response = await fetch('https://api.openai.com/v1/models', {headers: { 'Authorization': `Bearer ${apiKey}` }});
-                        } else if (provider === 'anthropic') {
-                            response = await fetch('https://api.anthropic.com/v1/messages', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-                                body: JSON.stringify({ model: 'claude-3-5-haiku-latest', messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 })
-                            });
-                        } else if (provider === 'groq') {
-                            response = await fetch('https://api.groq.com/openai/v1/models', {headers: { 'Authorization': `Bearer ${apiKey}` }});
-                        }
-
-                        if (response.ok || (provider === 'anthropic' && response.status !== 400)) {
-                            showStatus('apiStatus', `✅ ${provider} API key is valid!`, 'success');
-                        } else {
-                            showStatus('apiStatus', `❌ ${provider} API key is invalid`, 'error');
-                        }
-                    } catch (e) {
-                        showStatus('apiStatus', `❌ Network error testing ${provider} API key: ${e.message}`, 'error');
-                    }
-                },
-                save: async () => {
-                    const activeTab = $('.tab-content.active')[0].id.replace('-tab', '');
-                    const apiKey = $(`#${activeTab}ApiKey`).val().trim();
-                    if (!apiKey) { 
-                        showStatus('apiStatus', 'Please enter an API key!', 'error'); 
-                        return; 
-                    }
-                    
-                    this.setButtonLoading('saveApiKey', true);
-                    const apiKeys = this.GM.getValue('apiKeys', {});
-                    apiKeys[activeTab] = apiKey;
-                    this.GM.setValue('apiKeys', apiKeys);
-                    showStatus('apiStatus', `✅ Key saved successfully!`, 'success');
-                    this.setButtonLoading('saveApiKey', false);
-                }
-            }
-
-            loadSettings() {
-                let settings = null, get = this.GM.getValue;
-                if (!get) return;
-                // get
-                settings = {
-                    apiKeys: get('apiKeys', {}),
-                    hotkey: get('hotkey', { key: 'a', modifier: 'alt' }),
-                    theme: get('theme', 'light'),
-                    makeAIOutputEditable: get('makeAIOutputEditable', false),
-                    reflector: get('reflector', { enabled: false, lastOffer: '', lastAnswer: '' }),
-                };
-                showStatus('preferencesStatus', '✅ Userscript detected - settings sync automatically!', 'success');
-
-                // set API keys using jQuery to find all provider inputs
-                if (settings.apiKeys) {
-                    let hasAnyKey = false;
-                    $('[id$="ApiKey"]').each((i, input) => {
-                        const provider = input.id.replace('ApiKey', '');
-                        const key = settings.apiKeys[provider];
-                        if (key) {
-                            $(input).val(key);
-                            this.apiKey.validate(provider, key);
-                            hasAnyKey = true;
-                        }
-                    });
-                    
-                    if (hasAnyKey) showStatus('apiStatus', 'API keys loaded from userscript!', 'success');
-                }
-                
-                // set other settings
-                $('#hotkey').val(settings.hotkey.key || 'a');
-                $('#theme').val(settings.theme || 'light');
-                $('#makeAIOutputEditable').prop('checked', get('makeAIOutputEditable', false));
-
-                return settings;
-            };
-
-            saveSettings() {
-                const get = this.GM.getValue, set = this.GM.setValue;
-                
-                set('hotkey', { key: $('#hotkey').val(), modifier: 'alt' });
-                set('theme', $('#theme').val());
-                set('makeAIOutputEditable', $('#makeAIOutputEditable').prop('checked'));
-
-                this.setButtonLoading('saveSettings', true);
-                showStatus('preferencesStatus', '✅ Settings saved successfully!', 'success');
-                this.setButtonLoading('saveSettings', false);
-            }
-
-            setButtonLoading(btnId, loading) {
-                const $btn = $(`#${btnId}`);
-                const $text = $(`#${btnId}Text`);
-                const $spinner = $(`#${btnId}Spinner`);
-                $btn.prop('disabled', loading);
-                
-                if (btnId === 'saveApiKey') {
-                    $text.text(loading ? 'Saving...' : '💾 Save API Key');
-                } else if (btnId === 'saveSettings') {
-                    $text.text(loading ? 'Saving...' : '💾 Save Settings');
-                }
-                
-                $spinner.css('display', loading ? 'block' : 'none');
-            }
-        }
-
-        console.log('[ConfigPage] DOM loaded via jQuery ready, initializing ConfigManager');
-        const cm = new ConfigManager();
-    </script>
+		new ConfigV5();
+	</script>
 </body>
-
 </html>

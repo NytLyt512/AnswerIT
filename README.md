@@ -35,7 +35,7 @@ Works seamlessly with popular learning and assessment platforms. The configurati
    - [Violentmonkey](https://violentmonkey.github.io/get-it/) (Recommended)
    - [Tampermonkey](https://www.tampermonkey.net/) (Popular, but see note below)
 2. **Install AnswerIT**
-   - [Install Script](https://github.com/NytLyt512/raw/refs/heads/main/AnswerIT/AnswerIT.user.js)
+   - [Install Script](https://github.com/NytLyt512/raw/refs/heads/main/AnswerIT.user.js)
 3. **Configure Your Settings**
    - You'll be guided through the setup page to enter your API keys and preferences.
         - [Configuration Page](https://NytLyt512.github.io/AnswerIT/configure.html)

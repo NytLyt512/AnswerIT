@@ -1,16 +1,17 @@
 // ==UserScript==
 // @name         AnswerIT - Universal Tab Switch + Screenshare Detection Bypass and AI Answer Generator
 // @namespace    https://github.com/NytLyt512
-// @version      4.2.1
+// @version      5.0.0
 // @description  Universal tab switch + screenshare detection bypass and AI answer generator with popup interface
 // @author       NytLyt512
-// @match		 https://NytLyt512.github.io/AnswerIT/*
-// @match		 file:///*/AnswerIT/*	// For Dev Testing
 // @match        https://app.joinsuperset.com/assessments/*
 // @match        https://lms.talentely.com/*/*
 // @match        https://leetcode.com/problems/*
 // @match        https://www.linkedin.com/learning/*/*
 // @match        https://www.hackerrank.com/*
+// @match		 https://NytLyt512.github.io/AnswerIT/*
+// For Dev Testing
+// @match		 file:///*/AnswerIT/*
 // @icon         https://i.pinimg.com/736x/d9/b5/a6/d9b5a64b2a0f432e41f611ddd410d8be.jpg
 // @license      MIT
 // @run-at       document-start
@@ -34,6 +35,9 @@
 if (GM_info.script.version > GM_getValue('script_version', '0')) {
 	GM_setValue('script_version', GM_info.script.version);
 
+	// --- v5.0.0 ---
+	
+
 	// --- v4.0.0 ---
 	GM_deleteValue('hotkey'); // string -> { key: string, modifier: string }
 	GM_deleteValue('reflector'); // new reflector
@@ -47,14 +51,49 @@ if (GM_info.script.version > GM_getValue('script_version', '0')) {
 	}
 }
 
+const PRESET_PROVIDERS = [
+	{ id: 'gemini', name: 'Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', page: 'https://aistudio.google.com/app/apikey' },
+	{ id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1', page: 'https://console.groq.com/keys' },
+	{ id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', page: 'https://openrouter.ai/keys' },
+	{ id: 'nvidia', name: 'NVIDIA NIM', endpoint: 'https://integrate.api.nvidia.com/v1', page: 'https://build.nvidia.com/' },
+	{ id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', page: 'https://platform.openai.com/api-keys' },
+	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/settings/keys' }
+];
+
+const _mkProviderMap = () => Object.fromEntries(PRESET_PROVIDERS.map(p => [p.id, { ...p, apiKey: '', enabled: false, headers: {} }]));
+const _migrateCompatConfig = () => {
+	const old = GM_getValue('apiKeys', {}), curr = GM_getValue('openaiCompat', null);
+	if (curr?.providers && Array.isArray(curr?.models)) return curr;
+	const providers = _mkProviderMap();
+	Object.entries(old || {}).forEach(([id, apiKey]) => {
+		if (!apiKey) return;
+		const base = providers[id] || { id, name: id, endpoint: 'https://api.openai.com/v1', page: '', apiKey: '', enabled: false, headers: {}, custom: true };
+		providers[id] = { ...base, apiKey, enabled: true };
+	});
+	const next = {
+		providers,
+		models: [],
+		flags: {
+			showReasoning: true,
+			enableFollowups: false,
+			useResponsesApi: false,
+		}
+	};
+	GM_setValue('openaiCompat', next);
+	return next;
+};
+
 /**
  * -----------------------------------
  * ---- Userscript Configuration -----
  * -----------------------------------
  */
 const config = {
-	/** @type {{ gemini: string, openai: string, openrouter: string, groq: string, anthropic: string }} */
+	/** @type {{ [provider: string]: string }} */
 	apiKeys: GM_getValue("apiKeys", {}),	// can add multiple by separating with commas
+
+	/** @type {{ providers: Record<string, {id:string,name:string,endpoint:string,page:string,apiKey:string,enabled:boolean,headers:Record<string,string>,custom?:boolean}>, models: Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string}>, flags: { showReasoning: boolean, enableFollowups: boolean, useResponsesApi: boolean } }} */
+	openaiCompat: _migrateCompatConfig(),
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
@@ -70,6 +109,8 @@ const config = {
 
 	autoRun: false, // Default auto-run to false to avoid wasting api calls
 };
+
+Object.values(config.openaiCompat.providers || {}).forEach(p => { if (p?.apiKey) config.apiKeys[p.id] = p.apiKey; });
 
 // --- Website Configurations ---
 const websites = [
@@ -140,118 +181,23 @@ const websites = [
 ];
 
 // --- AI Models Declarations ---
-const models = [
-	{
-		name: "gemini-2.5-pro",
-		displayName: "Pro-Thinking",
-		subtitle: "Highest Quality | 5 RPM | Best for Complex Questions",
-		order: 1,
-		color: "#D2F8E5", // Soft Mint Green
-		tooltip: "Latest experimental Gemini 2.5 Pro model with 1M token context window. Best for complex reasoning and detailed responses.",
-		provider: "gemini"
-	},
-	{
-		name: "gemini-2.5-flash-preview-05-20",
-		displayName: "Flash-Thinking",
-		subtitle: "Best Quality | 10 RPM | Recommended for Complex Questions",
-		order: 2,
-		color: "#c8ffce", // Soft Pastel Green
-		tooltip: "Highest quality model, may be slower and has an API quota of 10 requests per minute. Use sparingly.",
-		generationConfig: { thinkingConfig: { thinkingBudget: 8000 } },
-		provider: "gemini"
-	},
-	{
-		name: "gemini-2.5-flash",
-		displayName: "Flash",
-		subtitle: "Fast Response | 15 RPM | Recommended for General Questions",
-		order: 3,
-		color: "#E0F7EF", // Very Light Aqua Green
-		tooltip: "Faster model, good for quick answers, quality may be slightly lower. Has an API quota of 15 requests per minute.",
-		generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
-		provider: "gemini"
-	},
-	{
-		name: "gemini-2.5-flash-lite-preview-06-17",
-		displayName: "Flash Lite",
-		subtitle: "Fastest & Cheapest | 30 RPM | For Simple Questions",
-		order: 4,
-		color: "#E6F9D5", // Soft Lime Green
-		tooltip: "Fastest and most cost-effective model, lowest quality, use for very simple or short questions. Has an API quota of 30 requests per minute.",
-		provider: "gemini"
-	},
-	{
-		name: "llama-3.3-70b-versatile",
-		displayName: "Llama 3.3",
-		subtitle: "Meta | 30 RPM | Code Generation and Problem Solving",
-		order: 5,
-		color: "#F0E5FF", // Soft Lavender
-		tooltip: "Llama-3.3-70B-Versatile is Meta's advanced multilingual large language model, optimized for a wide range of natural language processing tasks. With 70 billion parameters, it offers high performance across various benchmarks while maintaining efficiency suitable for diverse applications.",
-		provider: "groq"
-	},
-	{
-		name: "meta-llama/llama-4-maverick-17b-128e-instruct",
-		displayName: "Llama 4",
-		subtitle: "Meta | 30 RPM | Next-Gen Reasoning & Coding",
-		order: 6,
-		color: "#E8E6FF", // Soft Periwinkle
-		tooltip: "Meta's Llama 4 Maverick 17B: Next-generation Llama model with improved reasoning, code generation, and multilingual support. 128k context window, strong performance on academic and coding tasks. Faster and more efficient than Llama 3, competitive with GPT-4o and Claude Sonnet 4 for most practical use cases.",
-		provider: "groq"
-	},
-	{
-		name: "qwen/qwen3-32b",
-		displayName: "Qwen3-32B",
-		subtitle: "Alibaba-CLoud | 60 RPM | Multilingual Reasoning",
-		order: 7,
-		color: "#FFE5F0", // Soft Pink
-		tooltip: "Qwen3-32B-Instruct: Alibaba's advanced multilingual LLM, strong at reasoning, code, and academic tasks. 32B parameters, competitive with GPT-4-class models.",
-		provider: "groq"
-	},
-	{
-		name: "moonshotai/kimi-k2-instruct",
-		displayName: "Kimi K2",
-		subtitle: "Moonshot AI | 60 RPM | Complex Reasoning",
-		order: 8,
-		color: "#E5F7FF", // Soft Blue
-		tooltip: "MoonshotAI Kimi K2: 128k context, strong reasoning, multilingual support. Great for long and complex questions.",
-		provider: "groq"
-	},
-	{
-		name: "gpt-4o",
-		displayName: "GPT-4o",
-		subtitle: "OpenAI | Advanced Reasoning & Multimodal",
-		order: 9,
-		color: "#D6EFFF", // Soft Sky Blue
-		tooltip: "OpenAI's GPT-4o multimodal model: high-quality reasoning, supports text and image inputs, balanced speed and cost.",
-		provider: "openai"
-	},
-	{
-		name: "o4-mini-2025-04-16",
-		displayName: "o4 Mini",
-		subtitle: "OpenAI | Cost-Effective Reasoning",
-		order: 10,
-		color: "#E3F2FD", // Very Light Blue
-		tooltip: "GPT-o4 Mini: Reasoning model capable of handling complex questions with a 128k context window. Optimized for cost and speed, ideal for straightforward reasoning tasks.",
-		provider: "openai"
-	},
-	{
-		name: "claude-3-7-sonnet",
-		displayName: "Sonnet 3.7",
-		subtitle: "Claude | Efficient Generalist",
-		order: 11,
-		color: "#FFF6E0", // Very Pale Yellow
-		tooltip: "Anthropic's Claude Sonnet 3.7: robust generalist model with strong reasoning and coding performance. Faster and more cost-effective than Sonnet 4.0.",
-		provider: "anthropic"
-	},
-	{
-		name: "claude-sonnet-4-0",
-		displayName: "Sonnet 4",
-		subtitle: "Claude | Premium Code & Analysis",
-		order: 12,
-		color: "#FFF9D6", // Soft Butter Yellow
-		tooltip: "Anthropic's Claude Sonnet 4.0: top-tier for complex code generation, deep analysis, and very long contexts. High reliability and safety.",
-		provider: "anthropic"
-	},
-].sort((a, b) => a.order - b.order); // Sort by order (1 = first)
+const getConfiguredModels = () => (config.openaiCompat?.models || [])
+	.filter(m => m?.name && m?.providerId && m?.enabled)
+	.slice(0, 4)
+	.map((m, i) => ({
+		id: m.id || `${m.providerId}:${m.name}:${i}`,
+		name: m.name,
+		displayName: m.displayName || m.name.split('/').pop().slice(0, 14),
+		subtitle: `${(config.openaiCompat.providers[m.providerId]?.name || m.providerId)} • OpenAI-compatible`,
+		order: i,
+		color: m.color || ['#D2F8E5', '#E8E6FF', '#E5F7FF', '#FFE5F0'][i % 4],
+		tooltip: `${m.name} via ${config.openaiCompat.providers[m.providerId]?.endpoint || 'custom endpoint'}`,
+		provider: m.providerId,
+		options: m.options || {}
+	}));
+
+const getModelByName = (name) => getConfiguredModels().find(m => m.name === name);
+let defaultModel = null;
 
 
 /**
@@ -319,7 +265,7 @@ unsafeWindow.aitPopup = popup; // Expose to unsafeWindow for compatibility with 
 
 let currentSite = null;
 let currentQnIdentifier = null;
-let defaultModel = models[0].name; // This will be updated based on user's physical selection
+defaultModel = getConfiguredModels()[0]?.name || null; // no default if user did not configure models
 
 const isScriptPage = {
 	get: location.href.includes("/AnswerIT"),
@@ -425,7 +371,10 @@ const ReflectorHost = {
 			console.debug(msg);
 			if (msg.type === 'action') {
 				if (msg.action === 'button-click') popup.querySelector('#' + msg.data.elementId)?.click();
-				if (msg.action === 'model-click') handleGenerateAnswer(models[msg.data.modelIndex].name);
+				if (msg.action === 'model-click') {
+					const m = getConfiguredModels()[msg.data.modelIndex];
+					if (m?.name) handleGenerateAnswer(m.name);
+				}
 				if (msg.action === 'custom-prompt-change') {
 					const promptEl = popup.querySelector('#ait-custom-prompt');
 					if (promptEl) {
@@ -496,163 +445,57 @@ const AIProviders = {
 	},
 
 	_BaseProvider: {
-		async streamRequest(url, headers, data, onProgress, extractContent, isDone) {
+		async streamOpenAI(url, headers, payload, onProgress) {
 			return new Promise((resolve, reject) => {
-				let answerText = "", processedLength = 0;
+				let answer = '', reasoning = '', processed = 0;
+				const pickReasoning = d => d?.reasoning || d?.reasoning_content || d?.reasoningText || d?.reasoning?.text || d?.thinking || '';
 				GM.xmlHttpRequest({
-					method: "POST", url, headers, data: JSON.stringify(data),
-					onprogress: (r) => {
-						if (r.responseText?.length > processedLength) {
-							r.responseText.slice(processedLength).split('\n').forEach(line => {
-								if (line.startsWith('data: ') && !isDone?.(line)) {
-									try {
-										const content = extractContent(JSON.parse(line.slice(6)));
-										if (content) { answerText += content; onProgress(answerText); }
-									} catch { }
-								} else if (isDone?.(line)) return resolve(answerText);
-							});
-							processedLength = r.responseText.length;
-						}
+					method: 'POST', url, headers, data: JSON.stringify(payload),
+					onprogress: r => {
+						if (!r.responseText || r.responseText.length <= processed) return;
+						r.responseText.slice(processed).split('\n').forEach(line => {
+							if (!line.startsWith('data: ')) return;
+							if (line.includes('[DONE]')) return resolve({ answer, reasoning });
+							try {
+								const json = JSON.parse(line.slice(6));
+								const d = json?.choices?.[0]?.delta || {};
+								const txt = d.content || d.text || '';
+								const rs = pickReasoning(d) || (Array.isArray(d.reasoning_details) ? d.reasoning_details.map(x => x?.text || '').join('\n') : '');
+								if (txt) answer += txt;
+								if (rs) reasoning += rs;
+								if (txt || rs) onProgress({ answer, reasoning });
+							} catch { }
+						});
+						processed = r.responseText.length;
 					},
-					onload: (r) => r.status === 200 && answerText ? resolve(answerText) : reject(new Error(`No content received: Status ${r.status}\nResponse: ${r.responseText}`)),
-					onerror: (r) => {
-						let msg = `API error: ${r.status} ${r.statusText}`;
-						try {
-							const body = JSON.parse(r.responseText);
-							msg += ` - ${body?.error?.message || JSON.stringify(body)}`;
-						} catch { }
-						reject(new Error(msg));
-					}
+					onload: r => r.status >= 200 && r.status < 300 ? resolve({ answer, reasoning }) : reject(new Error(`API error ${r.status}: ${r.responseText || r.statusText}`)),
+					onerror: r => reject(new Error(`Network/API error ${r.status || ''} ${r.statusText || ''}`.trim()))
 				});
 			});
-		},
-
-		handleError(provider, response) {
-			if (response.status === 401 || response.status === 400) {
-				delete config.apiKeys[provider];
-				GM_setValue("apiKeys", config.apiKeys);
-				return `API Key Error: Invalid ${provider} API key.`;
-			}
-			return null;
 		}
 	},
 
-	gemini: {
-		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ inline_data: { mime_type: img.mimeType, data: img.data } }));
-			try {
-				return await AIProviders._BaseProvider.streamRequest(
-					`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:streamGenerateContent?key=${apiKey}&alt=sse`,
-					{ "Content-Type": "application/json" },
-					{ system_instruction: { parts: { text: AIProviders._SYSTEM_INSTRUCTION } }, contents: [{ parts: contentParts }], generationConfig: model?.generationConfig || {} },
-					onProgress,
-					(data) => data.candidates?.[0]?.content?.parts?.[0]?.text
-				);
-			} catch (error) {
-				if (error.message.includes("API key not valid")) {
-					delete config.apiKeys.gemini;
-					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Key rejected. Please provide a valid API key.");
-				}
-				throw error;
-			}
-		},
-		page: 'https://aistudio.google.com/app/apikeys',
-	},
-
-	openai: {
-		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
-			try {
-				return await AIProviders._BaseProvider.streamRequest(
-					"https://api.openai.com/v1/chat/completions",
-					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
-					onProgress,
-					(data) => data.choices?.[0]?.delta?.content,
-					(line) => line.includes("[DONE]")
-				);
-			} catch (error) {
-				if (error.message.includes("401") || error.message.includes("Invalid")) {
-					delete config.apiKeys.openai;
-					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Invalid OpenAI API key.");
-				}
-				throw error;
-			}
-		},
-		page: 'https://platform.openai.com/api-keys',
-	},
-
-	openrouter: {
-		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
-			try {
-				return await AIProviders._BaseProvider.streamRequest(
-					"https://openrouter.ai/api/v1/chat/completions",
-					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], stream: true },
-					onProgress,
-					(data) => data.choices?.[0]?.delta?.content,
-					(line) => line.includes("[DONE]")
-				);
-			} catch (error) {
-				if (error.message.includes("401") || error.message.includes("Invalid")) {
-					delete config.apiKeys.openrouter;
-					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Invalid OpenRouter API key.");
-				}
-				throw error;
-			}
-		},
-		page: 'https://openrouter.ai/api-keys',
-	},
-
-	groq: {
-		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image_url", image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
-			try {
-				return await AIProviders._BaseProvider.streamRequest(
-					"https://api.groq.com/openai/v1/chat/completions",
-					{ "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-					{ model: model.name, messages: [{ role: "system", content: AIProviders._SYSTEM_INSTRUCTION }, { role: "user", content: JSON.stringify(contentParts.map(part => part.text ? { type: "text", text: part.text } : part)) }], stream: true },
-					onProgress,
-					(data) => data.choices?.[0]?.delta?.content,
-					(line) => line.includes("[DONE]")
-				);
-			} catch (error) {
-				if (error.message.includes("401") || error.message.includes("Invalid")) {
-					delete config.apiKeys.groq;
-					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Invalid Groq API key.");
-				}
-				throw error;
-			}
-		},
-		page: 'https://groq.com/api-keys',
-	},
-
-	anthropic: {
-		async call(model, questionItem, apiKey, onProgress) {
-			const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: "image", source: { type: img.url.startsWith('http') ? "url" : "base64", ...(img.url.startsWith('http') ? { url: img.url } : { media_type: img.mimeType, data: img.data }) } }));
-			try {
-				return await AIProviders._BaseProvider.streamRequest(
-					"https://api.anthropic.com/v1/messages",
-					{ "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-					{ model: model.name, system: AIProviders._SYSTEM_INSTRUCTION, messages: [{ role: "user", content: contentParts.map(part => part.text ? { type: "text", text: part.text } : part) }], max_tokens: 4096, stream: true },
-					onProgress,
-					(data) => data.type === 'content_block_delta' && data.delta?.text
-				);
-			} catch (error) {
-				if (error.message.includes("401")) {
-					delete config.apiKeys.anthropic;
-					GM_setValue("apiKeys", config.apiKeys);
-					throw new Error("API Key Error: Invalid Anthropic API key.");
-				}
-				throw error;
-			}
-		},
-		page: 'https://console.anthropic.com/settings/keys',
+	async call(model, questionItem, provider, onProgress, contextMessages = []) {
+		const p = config.openaiCompat.providers?.[provider];
+		if (!p?.endpoint || !p?.apiKey) throw new Error(`Missing provider config for ${provider}`);
+		const contentParts = await AIProviders._ContentParser(questionItem, (img) => ({ type: 'image_url', image_url: { url: img.url.startsWith('http') ? img.url : `data:${img.mimeType};base64,${img.data}` } }));
+		const content = contentParts.map(part => part.text ? { type: 'text', text: part.text } : part);
+		const messages = [
+			{ role: 'system', content: AIProviders._SYSTEM_INSTRUCTION },
+			...(contextMessages || []),
+			{ role: 'user', content }
+		];
+		const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}`, ...(p.headers || {}) };
+		if (provider === 'openrouter') {
+			headers['HTTP-Referer'] = location.origin;
+			headers['X-Title'] = 'AnswerIT v5';
+		}
+		return AIProviders._BaseProvider.streamOpenAI(
+			`${p.endpoint.replace(/\/$/, '')}/chat/completions`,
+			headers,
+			{ model: model.name, messages, stream: true, ...(model.options || {}), ...(config.openaiCompat.flags?.useResponsesApi ? { response_format: { type: 'text' } } : {}) },
+			onProgress
+		);
 	}
 };
 
@@ -672,7 +515,7 @@ const AIState = {
 	// Get or create question state
 	getQuestion(qnId) {
 		if (!this.questions[qnId]) {
-			this.questions[qnId] = { answer: "", status: "idle", metadata: "", lastUsedModel: null, models: {} };
+			this.questions[qnId] = { answer: "", reasoning: "", status: "idle", metadata: "", lastUsedModel: null, models: {} };
 		}
 		return this.questions[qnId];
 	},
@@ -681,7 +524,7 @@ const AIState = {
 	getModel(qnId, modelName) {
 		const qn = this.getQuestion(qnId);
 		if (!qn.models[modelName]) {
-			qn.models[modelName] = { answer: "", status: "idle", metadata: "", startTime: null };
+			qn.models[modelName] = { answer: "", reasoning: "", status: "idle", metadata: "", startTime: null, messages: [] };
 		}
 		return qn.models[modelName];
 	},
@@ -695,6 +538,7 @@ const AIState = {
 		const qn = this.getQuestion(qnId);
 		if (!qn.lastUsedModel && updates.status === 'generating') {
 			if (updates.answer !== undefined) qn.answer = updates.answer;
+			if (updates.reasoning !== undefined) qn.reasoning = updates.reasoning;
 			qn.lastUsedModel = modelName;
 			if (updates.status !== undefined) qn.status = updates.status;
 			if (updates.metadata !== undefined) qn.metadata = updates.metadata;
@@ -704,6 +548,7 @@ const AIState = {
 			// Sync cached data to question level
 			const qn = this.getQuestion(qnId);
 			qn.answer = model.answer;
+			qn.reasoning = model.reasoning || '';
 			qn.status = model.status;
 			qn.metadata = model.metadata;
 			this.updateUI();
@@ -723,6 +568,10 @@ const AIState = {
 
 		// Update output area and caption
 		popup.outputArea.value = qn.answer;
+		const reasoningArea = popup.querySelector('#ait-reasoning-textarea');
+		const reasoningWrap = popup.querySelector('#ait-reasoning-container');
+		if (reasoningArea) reasoningArea.value = qn.reasoning || '';
+		if (reasoningWrap) reasoningWrap.style.display = config.openaiCompat.flags?.showReasoning ? 'flex' : 'none';
 		// Auto-scroll if current scroll position is near the bottom (within 200px)
 		if (popup.outputArea.scrollTop >= popup.outputArea.scrollHeight - popup.outputArea.clientHeight - 200) {
 			popup.outputArea.scrollTop = popup.outputArea.scrollHeight;
@@ -745,7 +594,7 @@ const AIState = {
 		}
 
 		// Update model buttons
-		models.forEach(model => {
+		getConfiguredModels().forEach(model => {
 			const button = popup.modelBtn[model.name];
 			if (!button) return;
 
@@ -805,7 +654,7 @@ const AIState = {
 
 	// Generate answer with specified model
 	async generateAnswer(modelName, questionItem, questionId, forceRetry = false) {
-		const model = models.find(m => m.name === modelName);
+		const model = getModelByName(modelName);
 		if (!model) throw new Error(`Model ${modelName} not found`);
 
 		const modelState = this.getModel(questionId, modelName);
@@ -821,30 +670,29 @@ const AIState = {
 		this.updateModel(questionId, modelName, {
 			status: 'generating',
 			startTime: Date.now(),
-			answer: ""
+			answer: "",
+			reasoning: ""
 		});
 
 		try {
-			const provider = model.provider || 'gemini';
-			const apiKey = config.apiKeys[provider];
-
-			if (!apiKey) {
-				throw new Error(`API key required for ${provider}. Please configure it.`);
-			}
-
-			const answer = await AIProviders[provider].call(model, questionItem, apiKey, (partialAnswer) => {
-				this.updateModel(questionId, modelName, { answer: partialAnswer });
-			});
+			const provider = model.provider;
+			const modelCtx = this.getModel(questionId, modelName);
+			const history = config.openaiCompat.flags?.enableFollowups ? modelCtx.messages || [] : [];
+			const out = await AIProviders.call(model, questionItem, provider, (partial) => {
+				this.updateModel(questionId, modelName, { answer: partial.answer, reasoning: partial.reasoning });
+			}, history);
+			if (config.openaiCompat.flags?.enableFollowups) modelCtx.messages = [...history, { role: 'user', content: questionItem.slice(0, 20000) }, { role: 'assistant', content: out.answer }].slice(-12);
 
 			const timeTaken = Date.now() - modelState.startTime;
 			this.updateModel(questionId, modelName, {
 				status: 'success',
-				answer: answer,
+				answer: out.answer,
+				reasoning: out.reasoning || '',
 				metadata: `Model: ${modelName} | Streamed (${timeTaken} ms)`,
 				startTime: null
 			});
 
-			return answer;
+			return out.answer;
 		} catch (error) {
 			this.updateModel(questionId, modelName, {
 				status: 'error',
@@ -893,7 +741,7 @@ function createPopupUI() {
 
 		<div id="ait-popup-content">
 			<div id="ait-models-grid">
-				<!-- Model buttons will be appended here by JS -->
+				<!-- Top 4 enabled model buttons -->
 			</div>
 
 			<div id="ait-custom-prompt-container">
@@ -903,6 +751,10 @@ function createPopupUI() {
 
 			<div id="ait-output-container">
 				<div id="ait-caption">Response metadata will appear here</div>
+				<div id="ait-reasoning-container" style="display:${config.openaiCompat.flags?.showReasoning ? 'flex' : 'none'};">
+					<div id="ait-reasoning-label">Reasoning</div>
+					<textarea id="ait-reasoning-textarea" placeholder="Model reasoning trace..." readonly></textarea>
+				</div>
 				<button id="ait-insert-button" data-action="handleInsert">Insert</button>
 				<textarea id="ait-output-textarea" placeholder="AI response will appear here..." ${GM_getValue('makeAIOutputEditable', false) ? '' : 'readonly'}></textarea>
 			</div>
@@ -910,15 +762,17 @@ function createPopupUI() {
 
 		<div id="ait-popup-footer">
 			<span id="ait-status-text">Ready</span>
+			<span id="ait-followup-controls">
+				<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.openaiCompat.flags?.enableFollowups ? '🧠' : '🫧'}</button>
+				<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
+			</span>
 			<span id="ait-hotkey-info">Press ${config.hotkey.modifier.toUpperCase()}+${config.hotkey.key.toUpperCase()} to toggle</span>
 		</div>
-	`;
-	// workaround to bypass the CSP to block unsafe-inline on some sites like linkedin-learning
-	popup.querySelectorAll('[data-action]').forEach(e => e.onclick = () => e.dataset.action.split('.').reduce((a, c) => a?.[c], popup)(e));
-	popup.querySelector('#ait-popup-header').ondblclick = () => popup.controls.toggleSnapping();
+	`;	// data-action attributes will be used to bind event listeners later (its a workaround for csp in sites like linkedin learning)
+	
+	// --- Setup Popup Controls ---
 	popup.querySelector("#ait-insert-button").style.display = !isScriptPage.reflector ? 'inline-block' : 'none';	// hide insert button on reflector page
 
-	// --- Setup Popup Controls ---
 	popup.toggleUi = () => {
 		if (!document.getElementById("ai-answer-popup")) {
 			createPopupUI();
@@ -954,11 +808,9 @@ function createPopupUI() {
 			GM_setValue("theme", config.theme);
 
 			// Update model button colors immediately
-			const modelButtons = popup.getElementsByClassName("ait-model-button");
-			models.forEach((model, index) => {
-				if (modelButtons[index]) {
-					modelButtons[index].style.backgroundColor = getThemedColor(model.color);
-				}
+			getConfiguredModels().forEach((model) => {
+				const btn = popup.modelBtn?.[model.name];
+				if (btn) btn.style.backgroundColor = getThemedColor(model.color);
 			});
 		},
 		toggleOpacity: () => {
@@ -1042,6 +894,20 @@ function createPopupUI() {
 			textarea.classList.toggle("visible");
 
 			if (textarea.classList.contains("visible")) textarea.focus();
+		},
+		toggleFollowups: () => {
+			config.openaiCompat.flags.enableFollowups = !config.openaiCompat.flags.enableFollowups;
+			GM_setValue('openaiCompat', config.openaiCompat);
+			const btn = popup.querySelector('#ait-toggle-followups');
+			if (btn) btn.textContent = config.openaiCompat.flags.enableFollowups ? '🧠' : '🫧';
+		},
+		clearThread: () => {
+			const qnId = AIState.currentQnId, modelName = AIState.getQuestion(qnId || '')?.lastUsedModel;
+			if (!qnId || !modelName) return;
+			const m = AIState.getModel(qnId, modelName);
+			m.messages = [];
+			m.reasoning = '';
+			if (popup.querySelector('#ait-reasoning-textarea')) popup.querySelector('#ait-reasoning-textarea').value = '';
 		}
 	};
 
@@ -1189,52 +1055,40 @@ function createPopupUI() {
 	// Ensure popup stays attached to edge on window resize
 	window.addEventListener('resize', popup.updatePosition);
 
-	// --- Populate models grid dynamically ---
-	const modelsByProvider = models.reduce((acc, model) => {
-		if (!acc[model.provider]) acc[model.provider] = [];
-		acc[model.provider].push(model);
-		return acc;
-	}, {});
-
-	const capitalizeWords = (str) => str.replace(/\b\w+/g, word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-
-	Object.entries(modelsByProvider).forEach(([provider, providerModels]) => {
-		const providerSection = document.createElement('div');
-		providerSection.className = 'ait-provider-section';
-		providerSection.innerHTML = `
-			<div class="ait-provider-header">${capitalizeWords(provider)}</div>
-			<div class="ait-provider-models"></div>
+	// --- Populate models grid dynamically (top 4 enabled only) ---
+	const configuredModels = getConfiguredModels();
+	if (!configuredModels.length) {
+		popup.querySelector('#ait-models-grid').innerHTML = `
+			<button class="ait-model-setup-cta" data-action="controls.openSetup" title="Configure models/providers">
+				⚙️ Configure OpenAI-Compatible Providers + Models
+			</button>
 		`;
-
-		const modelsContainer = providerSection.querySelector('.ait-provider-models');
-		providerModels.forEach((model) => {
+		popup.controls.openSetup = () => window.open('https://NytLyt512.github.io/AnswerIT/configure.html', '_blank');
+	} else {
+		configuredModels.forEach((model) => {
 			const btn = Object.assign(document.createElement('button'), {
 				innerHTML: `
 				<button class="ait-model-button" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};">
 					<span class="ait-model-name">${model.displayName}</span>
 					<div class="ait-model-status-container">
 						<span class="ait-model-progress">⠋</span>
-						<div class="ait-model-status-icon">
-							<span class="ait-model-success-icon">✔</span>
-							<span class="ait-model-retry-icon">↺</span>
-						</div>
+						<div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div>
 					</div>
 				</button>
 			`}).firstElementChild;
 			btn.onclick = () => handleGenerateAnswer(model.name);
-			btn.querySelector('.ait-model-status-icon').onclick = (e) => {
-				e.stopPropagation();
-				handleGenerateAnswer(model.name, true);
-			};
-
+			btn.querySelector('.ait-model-status-icon').onclick = (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true); };
 			popup.modelBtn[model.name] = btn;
-			modelsContainer.appendChild(btn);
+			popup.querySelector('#ait-models-grid').appendChild(btn);
 		});
-
-		popup.querySelector("#ait-models-grid").appendChild(providerSection);
-	});
+	}
 
 	// --- Events ---
+	
+	// workaround to bypass the CSP to block unsafe-inline on some sites like linkedin-learning
+	popup.querySelectorAll('[data-action]').forEach(e => e.onclick = () => e.dataset.action.split('.').reduce((a, c) => a?.[c], popup)(e));
+	popup.querySelector('#ait-popup-header').ondblclick = () => popup.controls.toggleSnapping();
+
 	// Attach keyboard shortcut handler
 	document.addEventListener("keydown", function (event) {
 		// Check if Alt+[configured key] is pressed using event.code for better compatibility
@@ -1323,46 +1177,12 @@ function hashCode(str) {
 	return hval.toString(16);
 }
 
-function getApiKey(provider = 'gemini') {
-	const setupChoice = confirm(
-		`🎯 Welcome to AnswerIT\n\nTo get started, you need to configure your FREE ${provider} API key.\n\nClick OK to open our modern setup page with easy instructions.\nClick Cancel to use the quick setup here.`
-	);
-
-	if (setupChoice) {
-		// Open the modern setup page
-		window.open("https://NytLyt512.github.io/AnswerIT/configure.html", "_blank");
-		alert(
-			"🔧 Setup page opened in a new tab!\n\n" +
-			`1. Get your API key from ${provider === 'gemini' ? 'Google AI Studio' : provider}\n` +
-			"2. Configure your preferences\n" +
-			"3. Return here and try again\n\n" +
-			"The setup page has detailed instructions and will save your settings automatically."
-		);
-		return null; // User should configure via setup page
-	} else {
-		// Fallback to quick setup
-		const urls = Object.entries(AIProviders).reduce((d, [k, v]) => (!k.startsWith('_') ? {...d, [k]: v.page} : d), {});
-
-		const info = confirm(
-			`Quick Setup: An API key is a secret token that lets our service access the ${provider} API. Get one for FREE from ${urls[provider]}.\n\nClick OK if you already have an API key.\nClick Cancel to open the key creation page.`
-		);
-		if (!info) {
-			window.open(urls[provider], "_blank");
-			alert(
-				`Please go to the following site to generate your key:\n ${urls[provider]} \n\nAfter creating your API key, return here and click OK.`
-			);
-		}
-		const key = prompt(
-			`Please paste your ${provider} API Key here.\n\nYour API key is a long alphanumeric string provided by ${provider}. Make sure to copy it exactly.`
-		);
-		if (key && key.trim()) {
-			config.apiKeys[provider] = key.trim();
-			GM_setValue("apiKeys", config.apiKeys);
-			return key.trim();
-		}
-		return key;
-	}
-}
+const openSetupPage = () => window.open("https://NytLyt512.github.io/AnswerIT/configure.html", "_blank");
+const getProvider = id => config.openaiCompat.providers?.[id] || null;
+const providerReady = id => {
+	const p = getProvider(id);
+	return !!(p?.enabled && p?.endpoint && p?.apiKey);
+};
 
 
 // --- Handlers ---
@@ -1383,7 +1203,8 @@ function handleUpdateUIStates() {
 		// --- Auto-run logic ---
 		if (config.autoRun) {
 			const qn = AIState.getQuestion(newQnIdentifier);
-			const modelToUse = qn.lastUsedModel || defaultModel;
+			const modelToUse = qn.lastUsedModel || defaultModel || getConfiguredModels()[0]?.name;
+			if (!modelToUse) return;
 
 			setTimeout(() => {
 				// Only run if question is still the same after a short delay
@@ -1416,14 +1237,12 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 	}
 
 	// Ensure we have the necessary API key
-	const model = models.find(m => m.name === modelName);
-	const provider = model?.provider || 'gemini';
-	if (!config.apiKeys[provider]) {
-		const key = getApiKey(provider);
-		if (!key) {
-			popup.outputArea.value = `API Key is required for ${provider}. Please follow the instructions to obtain one.`;
-			return;
-		}
+	const model = getModelByName(modelName);
+	const provider = model?.provider;
+	if (!model || !providerReady(provider)) {
+		popup.outputArea.value = `No active model/provider is configured for ${modelName || 'selection'}. Opening setup page...`;
+		openSetupPage();
+		return;
 	}
 
 	// Set default model to the one being used
@@ -1453,27 +1272,7 @@ async function detectCurrentWebsite() {
 }
 
 function changeApiKey() {
-	const providers = Object.keys(AIProviders).filter(k => !k.startsWith('_'));
-	const choice = prompt(`Which provider's API key would you like to change?\n\n${providers.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nEnter the number:`, '1');
-
-	const providerIndex = parseInt(choice) - 1;
-	if (providerIndex < 0 || providerIndex >= providers.length) {
-		alert("Invalid choice. Please try again.");
-		return;
-	}
-
-	const provider = providers[providerIndex];
-	const newKey = getApiKey(provider);
-
-	if (newKey !== null && newKey !== "") {
-		alert(`${provider} API Key updated successfully.`);
-	} else if (newKey === "") {
-		delete config.apiKeys[provider];
-		GM_setValue("apiKeys", config.apiKeys);
-		alert(`${provider} API Key cleared. A valid key is required to use the service.`);
-	} else {
-		alert("No API Key was provided. Please follow the instructions to obtain one.");
-	}
+	openSetupPage();
 }
 
 function changeHotkey() {
@@ -1494,7 +1293,7 @@ function changeHotkey() {
 
 // --- Register Menu Commands ---
 GM_registerMenuCommand("Toggle AI Popup (Alt+" + config.hotkey.key.toUpperCase() + ")", () => popup.toggleUi());
-GM_registerMenuCommand("Change API Key", changeApiKey);
+GM_registerMenuCommand("Configure Providers/Models", changeApiKey);
 GM_registerMenuCommand("Clear Response Cache", () => AIState.clearCache());
 GM_registerMenuCommand("Change Hotkey", changeHotkey);
 GM_registerMenuCommand("Reset Popup State", () => popup.resetState());
@@ -1506,6 +1305,8 @@ function exposeConfigToPage() {
 	const obj = {
 		supportedSites: websites,
 		reflector: config.reflector,
+		openaiCompat: config.openaiCompat,
+		presetProviders: PRESET_PROVIDERS,
 		GM_getValue,
 		GM_setValue,
 	};
@@ -1650,11 +1451,9 @@ GM_addStyle(`
 	#ait-caption { font-size: 0.85em; color: var(--color-caption); margin-bottom: 5px; font-style: italic; }
 	#ait-popup-content { padding: 15px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 
-	/* Provider-grouped compact layout */
-	#ait-models-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; transition: all 0.3s ease; }
-	.ait-provider-section { margin-bottom: 4px; }
-	.ait-provider-header { font-size: 11px; font-weight: 600; color: var(--color-subtitle); margin-bottom: 4px; padding: 2px 6px; background: var(--bg-header); border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-	.ait-provider-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; }
+	/* Flat top-4 model row */
+	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; }
+	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
 	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;	}
@@ -1685,10 +1484,15 @@ GM_addStyle(`
 	#ait-insert-button:hover { opacity: 1; }
 
 	#ait-output-container { position: relative; margin-top: 10px; display: flex; flex-direction: column; flex-grow: 1; flex-shrink: 1; flex-basis: auto; overflow: auto; margin-top: auto; }
+	#ait-reasoning-container { display: flex; flex-direction: column; margin-bottom: 6px; }
+	#ait-reasoning-label { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; opacity: .65; margin-bottom: 3px; }
+	#ait-reasoning-textarea { width: 100%; min-height: 64px; max-height: 130px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical; opacity: .85; background: color-mix(in srgb, var(--bg-textarea) 88%, #8f9cff 12%); color: var(--color-text); }
 	#ait-output-textarea { width: 100%; height: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; min-height: 150px; box-sizing: border-box; background-color: var(--bg-textarea); color: var(--color-text); }
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
+	#ait-followup-controls { display: inline-flex; gap: 6px; align-items: center; }
+	#ait-followup-controls > button { border: 1px solid var(--border-color); background: var(--bg-main); color: var(--color-text); border-radius: 6px; height: 22px; width: 24px; cursor: pointer; font-size: 12px; }
 
 	#ait-reflector-status { position: fixed; bottom: 8px; right: 8px; background: rgba(0, 0, 0, 0.05); padding: 3px 6px; border-radius: 8px; font: 9px monospace; z-index: 10010; opacity: 0.6; transition: all 0.5s; }
 `);
