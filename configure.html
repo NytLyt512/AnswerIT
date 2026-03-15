@@ -46,10 +46,13 @@
 							<label class="form-label">Popup Theme</label>
 							<select id="theme" class="form-input"><option value="light">Light</option><option value="dark">Dark</option></select>
 						</div>
+						<div class="form-group">
+							<label class="form-label">Default Output View</label>
+							<select id="outputMode" class="form-input"><option value="raw">Raw</option><option value="markdown">Markdown</option></select>
+						</div>
 					</div>
 					<div class="toggle-grid">
-						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output</span></label>
-						<label class="toggle-label"><input type="checkbox" id="enableFollowups" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Enable follow-up memory</span></label>
+						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output <small>(Raw only)</small></span></label>
 					</div>
 					<button type="submit" class="btn btn-primary">Save Preferences</button>
 				</form>
@@ -98,7 +101,7 @@
 			constructor(){
 				this.GM = { getValue: window.AnswerIT_Config?.GM_getValue, setValue: window.AnswerIT_Config?.GM_setValue, fetch: window.AnswerIT_Config?.GM_fetch };
 				this.state = { providers:{}, models:[] };
-				this.aiSettings = { enableFollowups:false, reasoningEffort:'none' };
+				this.aiSettings = { reasoningEffort:'none' };
 				this.expandedProvider = null;
 				this.modelCatalog = {};
 				this.theme = localStorage.getItem('pageTheme') || 'light';
@@ -125,8 +128,8 @@
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
 				$('#theme').value = g('theme', 'light');
+				$('#outputMode').value = g('outputMode', 'raw');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
-				$('#enableFollowups').checked = !!this.aiSettings.enableFollowups;
 			}
 			render(){ this.renderPresetBar(); this.renderProviderList(); this.renderModels(); }
 			renderPresetBar(){
@@ -158,7 +161,9 @@
 				$$('.provider-item').forEach(el => {
 					const id = el.dataset.id, p = this.state.providers[id];
 					const sync = () => Object.assign(p, { name: el.querySelector('.pname').value.trim(), endpoint: el.querySelector('.endpoint').value.trim(), apiKey: el.querySelector('.key').value.trim(), enabled: el.querySelector('.provider-enabled').checked });
-					el.querySelector('.provider-title').onclick = () => { this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); };
+					const toggle = (e) => { if (e.target.closest('.provider-enabled')) return; this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); };
+					el.querySelector('.provider-title').onclick = toggle;
+					el.querySelector('.provider-head').onclick = toggle;
 					el.querySelector('.provider-enabled').oninput = sync;
 					el.querySelectorAll('.pname,.endpoint,.key').forEach(inp => inp.oninput = sync);
 					el.querySelector('.test').onclick = async e => {
@@ -202,7 +207,13 @@
 							<label class="tiny-check"><input class="rs" type="checkbox" ${m.reasoning ? 'checked' : ''}> reason</label>
 							<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
 						</div>
-						<input class="form-input op" value="${JSON.stringify(m.options || {}).replace(/"/g,'&quot;')}" placeholder='options JSON'>
+						<div class="model-opt-wrap">
+							<button class="btn btn-secondary mini opt" title="Model options JSON">⚙️</button>
+							<div class="model-opt-pop">
+								<textarea class="model-opt-editor">${JSON.stringify(m.options || {}, null, 2)}</textarea>
+								<div class="model-opt-status">JSON: valid</div>
+							</div>
+						</div>
 						<button class="btn btn-secondary mini del">🗑</button>
 					</div>`
 				).join('') || '<div class="empty-note">No models yet. Add one and pick a provider.</div>';
@@ -212,7 +223,16 @@
 					const i = +row.dataset.idx;
 					const datalist = row.querySelector(`#dl-${i}`);
 					const sync = () => {
-						let options = {}; try { options = JSON.parse(row.querySelector('.op').value || '{}'); } catch { options = {}; }
+						const editor = row.querySelector('.model-opt-editor');
+						let options = this.state.models[i].options || {};
+						try {
+							options = JSON.parse(editor.value || '{}');
+							row.querySelector('.model-opt-status').textContent = 'JSON: valid';
+							row.querySelector('.model-opt-status').classList.remove('invalid');
+						} catch {
+							row.querySelector('.model-opt-status').textContent = 'JSON: invalid';
+							row.querySelector('.model-opt-status').classList.add('invalid');
+						}
 						Object.assign(this.state.models[i], {
 							enabled: row.querySelector('.en').checked,
 							name: row.querySelector('.mn').value.trim(),
@@ -240,7 +260,8 @@
 						const pick = catalog.find(x => x.id === row.querySelector('.mn').value.trim());
 						if (pick) { row.querySelector('.dn').value = pick.display; sync(); }
 					};
-					row.querySelectorAll('.en,.dn,.rs,.im,.op').forEach(el => el.oninput = sync);
+					row.querySelectorAll('.en,.dn,.rs,.im,.model-opt-editor').forEach(el => el.oninput = sync);
+					row.querySelector('.opt').onclick = e => { e.preventDefault(); row.querySelector('.model-opt-wrap').classList.toggle('open'); };
 					row.querySelector('.del').onclick = e => { e.preventDefault(); this.state.models.splice(i, 1); this.renderModels(); };
 
 					row.ondragstart = () => { dragFrom = i; row.classList.add('dragging'); };
@@ -259,7 +280,7 @@
 				});
 			}
 			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.expandedProvider = pid; this.renderProviderList(); this.renderModels(); }
-			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); }
+			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
 			saveAIConfig(){
 				this.GM.setValue('providers', this.state.providers);
 				this.GM.setValue('models', this.state.models.filter(m => m.name && m.providerId));
@@ -269,10 +290,10 @@
 				status($('#apiStatus'), `✅ Saved ${Object.keys(this.state.providers).length} providers and ${this.state.models.length} models`, 'success');
 			}
 			savePrefs(){
-				this.aiSettings = { ...this.aiSettings, enableFollowups: $('#enableFollowups').checked };
 				this.GM.setValue('aiSettings', this.aiSettings);
 				this.GM.setValue('hotkey', { key: $('#hotkey').value, modifier: 'alt' });
 				this.GM.setValue('theme', $('#theme').value);
+				this.GM.setValue('outputMode', $('#outputMode').value);
 				this.GM.setValue('makeAIOutputEditable', $('#makeAIOutputEditable').checked);
 				status($('#preferencesStatus'), '✅ Preferences saved', 'success');
 			}

@@ -73,7 +73,7 @@ if (versionLessThan(prevVersion, GM_info.script.version)) {
 		const oldApiKeys = GM_getValue('apiKeys', {});
 		const providers = GM_getValue('providers', {});
 		const models = GM_getValue('models', []);
-		const aiSettings = GM_getValue('aiSettings', { enableFollowups: false, reasoningEffort: 'none' });
+		const aiSettings = GM_getValue('aiSettings', { reasoningEffort: 'none' });
 
 		if (!Object.keys(providers).length) {
 			const seed = Object.fromEntries(PRESET_PROVIDER_SEED.map(p => [p.id, { ...p, apiKey: oldApiKeys[p.id] || '', enabled: !!oldApiKeys[p.id], headers: {} }]));
@@ -82,7 +82,6 @@ if (versionLessThan(prevVersion, GM_info.script.version)) {
 		if (!Array.isArray(models)) GM_setValue('models', []);
 		if (!aiSettings || typeof aiSettings !== 'object') {
 			GM_setValue('aiSettings', {
-				enableFollowups: false,
 				reasoningEffort: 'none',
 			});
 		}
@@ -110,8 +109,11 @@ const config = {
 	/** @type {Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
 	models: GM_getValue('models', []),
 
-	/** @type {{ enableFollowups: boolean, reasoningEffort: 'high'|'med'|'low'|'none' }} */
-	aiSettings: Object.assign({ enableFollowups: false, reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
+	/** @type {{ reasoningEffort: 'high'|'med'|'low'|'none' }} */
+	aiSettings: Object.assign({ reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
+
+	/** @type {'raw'|'markdown'} */
+	outputMode: GM_getValue('outputMode', 'raw'),
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)
@@ -655,6 +657,11 @@ const AIState = {
 
 		// Update output area and caption
 		popup.outputArea.value = qn.answer;
+		const mdView = popup.querySelector('#ait-output-markdown');
+		if (mdView) mdView.innerHTML = popup.renderMarkdown(qn.answer || '');
+		const showMd = config.outputMode === 'markdown';
+		popup.outputArea.style.display = showMd ? 'none' : 'block';
+		if (mdView) mdView.style.display = showMd ? 'block' : 'none';
 		const thoughtWrap = popup.querySelector('#ait-thoughts'), thoughtBody = popup.querySelector('#ait-thought-body'), thoughtSummary = popup.querySelector('#ait-thought-summary');
 		const activeModel = qn.lastUsedModel ? this.getModel(qnId, qn.lastUsedModel) : null;
 		const reasoning = qn.reasoning || '';
@@ -759,8 +766,14 @@ const AIState = {
 		const modelState = this.getModel(questionId, modelName);
 		this.getQuestion(questionId).lastUsedModel = modelName; // Set last used model to current
 
-		// Check cache unless force retry (follow-up mode always creates a new turn)
-		if (!forceRetry && !config.aiSettings.enableFollowups && modelState.status === 'success') {
+		// Check cache unless force retry
+		if (!forceRetry && modelState.status === 'success') {
+			this.updateModel(questionId, modelName, {});
+			return modelState.answer;
+		}
+
+		// If already generating, switch to that model's tab instead of starting another generation
+		if (modelState.status === 'generating') {
 			this.updateModel(questionId, modelName, {});
 			return modelState.answer;
 		}
@@ -778,13 +791,11 @@ const AIState = {
 		try {
 			const provider = model.provider;
 			const modelCtx = this.getModel(questionId, modelName);
-			const history = config.aiSettings.enableFollowups ? modelCtx.messages || [] : [];
-			const userTurn = { role: 'user', content: questionItem.slice(0, 20000) };
+			const history = [];
 			const out = await AIProviders.call(model, questionItem, provider, (partial) => {
 				if (!modelCtx.reasoningStartAt && partial.reasoning?.trim()) modelCtx.reasoningStartAt = Date.now();
 				this.updateModel(questionId, modelName, { answer: partial.answer, reasoning: partial.reasoning });
 			}, history);
-			if (config.aiSettings.enableFollowups) modelCtx.messages = [...history, userTurn, { role: 'assistant', content: out.answer }].slice(-18);
 
 			const timeTaken = Date.now() - modelState.startTime;
 			const completedGen = {
@@ -864,7 +875,6 @@ function createPopupUI() {
 					<label id="ait-custom-prompt-label" data-action="controls.toggleCustomPrompt">Custom Prompt</label>
 					<span id="ait-prompt-tools">
 						<button id="ait-effort-toggle" title="Reasoning effort: ${config.aiSettings.reasoningEffort}" data-action="controls.toggleReasoningEffort">${config.aiSettings.reasoningEffort}</button>
-						<button id="ait-toggle-followups" title="Toggle follow-up memory" data-action="controls.toggleFollowups">${config.aiSettings.enableFollowups ? '🧠' : '🫧'}</button>
 						<button id="ait-clear-thread" title="Clear current model thread" data-action="controls.clearThread">⌫</button>
 					</span>
 				</div>
@@ -882,8 +892,10 @@ function createPopupUI() {
 					<span id="ait-gen-info"></span>
 					<button id="ait-gen-next" title="Next regeneration" data-action="controls.nextGeneration">›</button>
 				</span>
+				<button id="ait-view-toggle" title="Toggle raw/markdown view" data-action="controls.toggleOutputMode">${config.outputMode === 'markdown' ? 'MD' : 'RAW'}</button>
 				<button id="ait-insert-button" data-action="handleInsert">Insert</button>
 				<textarea id="ait-output-textarea" placeholder="AI response will appear here..." ${GM_getValue('makeAIOutputEditable', false) ? '' : 'readonly'}></textarea>
+				<div id="ait-output-markdown" style="display:none;"></div>
 			</div>
 		</div>
 
@@ -1035,33 +1047,53 @@ function createPopupUI() {
 				btn.title = `Reasoning effort: ${config.aiSettings.reasoningEffort}`;
 			}
 		},
+		toggleOutputMode: () => {
+			config.outputMode = config.outputMode === 'markdown' ? 'raw' : 'markdown';
+			GM_setValue('outputMode', config.outputMode);
+			const btn = popup.querySelector('#ait-view-toggle');
+			if (btn) btn.textContent = config.outputMode === 'markdown' ? 'MD' : 'RAW';
+			popup.outputArea.readOnly = config.outputMode !== 'raw' || !GM_getValue('makeAIOutputEditable', false);
+			AIState.updateUI();
+		},
 		prevGeneration: () => AIState.changeGeneration(-1),
 		nextGeneration: () => AIState.changeGeneration(1),
-		toggleFollowups: () => {
-			config.aiSettings.enableFollowups = !config.aiSettings.enableFollowups;
-			GM_setValue('aiSettings', config.aiSettings);
-			const btn = popup.querySelector('#ait-toggle-followups');
-			if (btn) btn.textContent = config.aiSettings.enableFollowups ? '🧠' : '🫧';
-		},
 		clearThread: () => {
 			const qnId = AIState.currentQnId, modelName = AIState.getQuestion(qnId || '')?.lastUsedModel;
 			if (!qnId || !modelName) return;
 			const m = AIState.getModel(qnId, modelName);
-			m.messages = [];
 			m.generations = [];
 			m.genIndex = -1;
 			m.reasoning = '';
 			m.answer = '';
 			if (popup.querySelector('#ait-thought-body')) popup.querySelector('#ait-thought-body').value = '';
 			if (popup.outputArea) popup.outputArea.value = '';
+			const md = popup.querySelector('#ait-output-markdown');
+			if (md) md.innerHTML = '';
 			AIState.syncGenerationNav(m);
 		}
+	};
+
+	popup.renderMarkdown = (text = '') => {
+		const esc = s => s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+		let out = esc(text);
+		out = out.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+		out = out.replace(/^###\s+(.+)$/gm, '<h4>$1</h4>').replace(/^##\s+(.+)$/gm, '<h3>$1</h3>').replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
+		out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+		out = out.replace(/\n/g, '<br>');
+		return out;
 	};
 
 	popup.handleInsert = () => {
 		const btn = popup.querySelector("#ait-insert-button");
 		const originalBtn = btn.innerHTML;
-		const text = popup.outputArea.value.substring(popup.outputArea.selectionStart, popup.outputArea.selectionEnd) || popup.outputArea.value;
+		let text = popup.outputArea.value;
+		if (config.outputMode === 'raw') {
+			text = popup.outputArea.value.substring(popup.outputArea.selectionStart, popup.outputArea.selectionEnd) || popup.outputArea.value;
+		} else {
+			const md = popup.querySelector('#ait-output-markdown');
+			const sel = window.getSelection();
+			if (sel && md?.contains(sel.anchorNode) && sel.toString().trim()) text = sel.toString();
+		}
 
 		// Add a global style to force crosshair cursor everywhere
 		const cursorStyleId = "ait-insert-crosshair-style";
@@ -1127,6 +1159,7 @@ function createPopupUI() {
 	};
 
 	popup.outputArea = popup.querySelector("#ait-output-textarea");
+	popup.outputArea.readOnly = config.outputMode !== 'raw' || !GM_getValue('makeAIOutputEditable', false);
 
 	// --- Reset, Detach/Attach, Drag, and Resize ---
 	popup.resetState = () => {
@@ -1215,21 +1248,29 @@ function createPopupUI() {
 		}
 		visible.forEach((model, idx) => {
 			const isShortcut = idx === 3 && rest.length;
-			const menu = isShortcut ? `<div class="ait-shortcut-corner">⋯</div><div class="ait-shortcut-popover">${rest.map(r => `<button data-model="${r.name}" title="${r.subtitle}">${r.displayName} · ${r.subtitle}</button>`).join('')}</div>` : '';
+			const wrap = document.createElement('div');
+			wrap.className = `ait-model-wrap ${isShortcut ? 'shortcut' : ''}`;
 			const btn = Object.assign(document.createElement('button'), {
-				innerHTML: `<button class="ait-model-button ${isShortcut ? 'shortcut' : ''}" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};"><span class="ait-model-name">${model.displayName}</span><div class="ait-model-status-container"><span class="ait-model-progress">⠋</span><div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div></div>${menu}</button>`
+				innerHTML: `<button class="ait-model-button ${isShortcut ? 'shortcut' : ''}" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};"><span class="ait-model-name">${model.displayName}</span><div class="ait-model-status-container"><span class="ait-model-progress">⠋</span><div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div></div>${isShortcut ? '<div class="ait-shortcut-corner">⋯</div>' : ''}</button>`
 			}).firstElementChild;
 			btn.onclick = () => handleGenerateAnswer(model.name);
 			btn.querySelector('.ait-model-status-icon')?.addEventListener('click', (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true); });
-			btn.querySelectorAll('.ait-shortcut-popover button').forEach(item => item.addEventListener('click', (e) => {
-				e.stopPropagation();
-				const selected = e.currentTarget.dataset.model;
-				GM_setValue('modelShortcut4', selected);
-				defaultModel = selected;
-				popup.renderModelButtons();
-			}));
+			if (isShortcut) {
+				const pop = document.createElement('div');
+				pop.className = 'ait-shortcut-popover';
+				pop.innerHTML = rest.map(r => `<button data-model="${r.name}" title="${r.subtitle}">${r.displayName} <span>${r.subtitle}</span></button>`).join('');
+				pop.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
+					e.stopPropagation();
+					const selected = e.currentTarget.dataset.model;
+					GM_setValue('modelShortcut4', selected);
+					defaultModel = selected;
+					popup.renderModelButtons();
+				}));
+				wrap.appendChild(pop);
+			}
 			popup.modelBtn[model.name] = btn;
-			container.appendChild(btn);
+			wrap.appendChild(btn);
+			container.appendChild(wrap);
 		});
 	};
 	popup.renderModelButtons();
@@ -1373,7 +1414,10 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 	// --- Get Question Info ---
 	const qElm = page.getQnElm();
 	if (!qElm) {
-		popup.outputArea.value = "Error: Question not found on page. This page might not be supported yet.";
+		const msg = "Error: Question not found on page. This page might not be supported yet.";
+		popup.outputArea.value = msg;
+		const md = popup.querySelector('#ait-output-markdown');
+		if (md) md.innerHTML = popup.renderMarkdown(msg);
 		return;
 	}
 
@@ -1391,7 +1435,10 @@ async function handleGenerateAnswer(modelName, forceRetry = false) {
 	const model = getModelByName(modelName);
 	const provider = model?.provider;
 	if (!model || !providerReady(provider)) {
-		popup.outputArea.value = `No active model/provider is configured for ${modelName || 'selection'}. Opening setup page...`;
+		const msg = `No active model/provider is configured for ${modelName || 'selection'}. Opening setup page...`;
+		popup.outputArea.value = msg;
+		const md = popup.querySelector('#ait-output-markdown');
+		if (md) md.innerHTML = popup.renderMarkdown(msg);
 		openSetupPage();
 		return;
 	}
@@ -1607,6 +1654,7 @@ GM_addStyle(`
 
 	/* Flat top-4 model row */
 	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; }
+	.ait-model-wrap { position: relative; overflow: visible; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
 	.ait-model-button { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: visible; }
 	.ait-model-button.shortcut { padding-bottom: 13px; }
@@ -1626,9 +1674,11 @@ GM_addStyle(`
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
 	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
-	.ait-shortcut-popover { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 10002; width: 230px; max-height: 180px; overflow-y: auto; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
-	.ait-model-button.shortcut:hover .ait-shortcut-popover { display: flex; }
-	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 5px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: normal; line-height: 1.2; }
+	.ait-shortcut-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 10020; width: 250px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
+	.ait-model-wrap.shortcut:hover .ait-shortcut-popover,
+	.ait-shortcut-popover:hover { display: flex; }
+	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 5px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; line-height: 1.2; }
+	.ait-shortcut-popover > button > span { opacity: .7; font-size: 10px; }
 	.ait-shortcut-popover > button:hover { background: rgba(140,160,255,.15); }
 	@keyframes spin { to { transform: rotate(360deg); } }
 
@@ -1644,9 +1694,10 @@ GM_addStyle(`
 	#ait-custom-prompt { width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; min-height: 60px; display: none; background-color: var(--bg-textarea); color: var(--color-text); }
 	#ait-custom-prompt.visible { display: block; }
 	
+	#ait-view-toggle { position: absolute; top: 5px; right: 58px; background-color: var(--bg-insert-button); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 7px; font-size: 0.75em; cursor: pointer; opacity: 0.86; color: var(--color-text); text-transform: uppercase; }
 	#ait-insert-button { position: absolute; top: 5px; right: 5px; background-color: var(--bg-insert-button); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; font-size: 0.8em; cursor: pointer; opacity: 0.8; transition: opacity 0.3s ease; color: var(--color-text); }
 	#ait-insert-button:hover { opacity: 1; }
-	#ait-gen-controls { position: absolute; top: 5px; right: 58px; display: inline-flex; align-items: center; gap: 4px; opacity: .75; }
+	#ait-gen-controls { position: absolute; bottom: 8px; right: 8px; display: inline-flex; align-items: center; gap: 4px; opacity: .78; background: color-mix(in srgb, var(--bg-main) 88%, #6e8bff 12%); border: 1px solid var(--border-color); border-radius: 8px; padding: 2px 4px; }
 	#ait-gen-controls button { border: 1px solid var(--border-color); background: transparent; color: var(--color-text); border-radius: 6px; width: 20px; height: 20px; cursor: pointer; }
 	#ait-gen-controls button:disabled { opacity: .35; cursor: not-allowed; }
 	#ait-gen-info { min-width: 26px; text-align: center; font-size: 10px; }
@@ -1661,6 +1712,9 @@ GM_addStyle(`
 	#ait-thoughts.expanded #ait-thought-body-wrap { display: block; }
 	#ait-thought-body { width: 100%; min-height: 74px; max-height: 160px; padding: 8px; border: 0; background: transparent; color: var(--color-text); font-family: monospace; font-size: 11px; resize: vertical; }
 	#ait-output-textarea { width: 100%; height: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; min-height: 150px; box-sizing: border-box; background-color: var(--bg-textarea); color: var(--color-text); }
+	#ait-output-markdown { width: 100%; height: 100%; min-height: 150px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-textarea); color: var(--color-text); font-size: 12px; line-height: 1.45; overflow: auto; }
+	#ait-output-markdown pre { padding: 8px; border-radius: 6px; background: color-mix(in srgb, var(--bg-main) 80%, #000 20%); overflow-x: auto; margin: 6px 0; }
+	#ait-output-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
