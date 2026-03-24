@@ -60,9 +60,8 @@
 
 .panel-head { display:flex; justify-content:space-between; align-items:center; gap:.5rem }
 
-.chip-row { display:flex; gap:.35rem; flex-wrap:wrap }
-.chip { border:1px solid var(--border); background:linear-gradient(135deg,rgba(102,126,234,.14),rgba(118,75,162,.11)); color:var(--text); padding:.34rem .62rem; border-radius:999px; cursor:pointer }
-.chip { border:1px solid var(--border); background:linear-gradient(135deg,rgba(102,126,234,.14),rgba(118,75,162,.11)); color:var(--text); padding:.34rem .62rem; border-radius:999px; cursor:pointer; animation:slideInChip .22s ease; transition:all .2s ease }
+.chip-row { display:flex; gap:.35rem; flex-wrap:wrap; margin-bottom: 8px; }
+.chip { font-size: 12px; border:1px solid var(--border); background:linear-gradient(135deg,rgba(102,126,234,.14),rgba(118,75,162,.11)); color:var(--text); padding:.34rem .62rem; border-radius:999px; cursor:pointer; animation:slideInChip .22s ease; transition:all .2s ease }
 .chip:hover { background:linear-gradient(135deg,rgba(102,126,234,.24),rgba(118,75,162,.2)); transform:scale(1.04) }
 .chip.removing { animation:slideOutChip .22s ease; opacity:0; pointer-events:none }
 @keyframes slideInChip { from { opacity:0; transform:translateX(-8px); gap:0 } to { opacity:1; transform:translateX(0); gap:.35rem } }

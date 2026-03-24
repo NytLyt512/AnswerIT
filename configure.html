@@ -128,7 +128,7 @@
 				this.state.providers = g('providers', {}) || {};
 				this.state.models = Array.isArray(g('models', [])) ? g('models', []) : [];
 				this.aiSettings = Object.assign(this.aiSettings, g('aiSettings', {}) || {});
-				PRESET.forEach(p => { if (!this.state.providers[p.id]) this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} }; });
+
 				this.expandedProvider = Object.keys(this.state.providers)[0] || null;
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';

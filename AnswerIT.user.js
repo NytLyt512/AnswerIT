@@ -40,7 +40,7 @@ const PRESET_PROVIDER_SEED = [
 	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/account/api-keys' },
 	{ id: 'azure', name: 'Azure OpenAI', endpoint: 'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME', page: 'https://portal.azure.com/#view/Microsoft_Azure_OpenAI/OpenAIResourcesMenuBlade/~/overview' },
 	{ id: 'ollama', name: 'Ollama', endpoint: 'http://localhost:11434/v1', page: 'https://ollama.com/download' },
-	{ id: 'z.ai', name: 'Z.AI', endpoint: 'https://api.z.ai/api/paas/v4', page: 'https://z.ai/manage-apikey/apikey-list' },
+	{ id: 'z.ai', name: 'Z.AI', endpoint: 'https://api.z.ai/api/paas/v4/chat/completions', page: 'https://z.ai/manage-apikey/apikey-list' },
 ];
 
 const versionLessThan = (a = '0', b = '0') => {
@@ -223,7 +223,8 @@ const getVisibleModels = () => {
 	const modelCount = parseInt(GM_getValue('modelCount', '4'), 10);
 	const topN = all.slice(0, modelCount - 1), rest = all.slice(modelCount - 1);
 	if (!rest.length) return topN;
-	const pinned = GM_getValue('modelShortcut4', ''), selected = rest.find(m => m.name === pinned) || rest[0];
+	const flexSlotKey = `modelShortcut${modelCount}`;
+	const pinned = GM_getValue(flexSlotKey, ''), selected = rest.find(m => m.name === pinned) || rest[0];
 	return [...topN, selected];
 };
 
@@ -1302,19 +1303,20 @@ function createPopupUI() {
 	// Ensure popup stays attached to edge on window resize
 	window.addEventListener('resize', popup.updatePosition);
 
-	// --- Populate models grid dynamically (top3 + shortcut 4th) ---
+	// --- Populate models grid dynamically (flex slot based on modelCount) ---
 	popup.renderModelButtons = () => {
 		popup.modelBtn = {};
 		const container = popup.querySelector('#ait-models-grid');
 		container.innerHTML = '';
-		const visible = getVisibleModels(), all = getEnabledModels(), rest = all.slice(3);
+		const modelCount = parseInt(GM_getValue('modelCount', '4'), 10);
+		const visible = getVisibleModels(), all = getEnabledModels(), rest = all.slice(modelCount - 1);
 		if (!visible.length) {
 			container.innerHTML = `<button class="ait-model-setup-cta" data-action="controls.openSetup" title="Configure models/providers">⚙️ Configure Providers + Models</button>`;
 			popup.controls.openSetup = () => window.open('https://NytLyt512.github.io/AnswerIT/configure.html', '_blank');
 			return;
 		}
 		visible.forEach((model, idx) => {
-			const isShortcut = idx === 3 && rest.length;
+			const isShortcut = idx === modelCount - 1 && rest.length;
 			const wrap = document.createElement('div');
 			wrap.className = `ait-model-wrap ${isShortcut ? 'shortcut' : ''}`;
 			const btn = Object.assign(document.createElement('button'), {
@@ -1336,7 +1338,8 @@ function createPopupUI() {
 				pop.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
 					e.stopPropagation();
 					const selected = e.currentTarget.dataset.model;
-					GM_setValue('modelShortcut4', selected);
+					const modelCount = parseInt(GM_getValue('modelCount', '4'), 10);
+					GM_setValue(`modelShortcut${modelCount}`, selected);
 					defaultModel = selected;
 					wrap.classList.remove('open');
 					popup.renderModelButtons();
