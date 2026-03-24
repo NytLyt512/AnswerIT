@@ -40,6 +40,7 @@ const PRESET_PROVIDER_SEED = [
 	{ id: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', page: 'https://console.anthropic.com/account/api-keys' },
 	{ id: 'azure', name: 'Azure OpenAI', endpoint: 'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME', page: 'https://portal.azure.com/#view/Microsoft_Azure_OpenAI/OpenAIResourcesMenuBlade/~/overview' },
 	{ id: 'ollama', name: 'Ollama', endpoint: 'http://localhost:11434/v1', page: 'https://ollama.com/download' },
+	{ id: 'z.ai', name: 'Z.AI', endpoint: 'https://api.z.ai/api/paas/v4', page: 'https://z.ai/manage-apikey/apikey-list' },
 ];
 
 const versionLessThan = (a = '0', b = '0') => {
