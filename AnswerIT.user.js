@@ -584,7 +584,7 @@ const AIState = {
 		if (!qn.models[modelName]) {
 			qn.models[modelName] = {
 				answer: "", reasoning: "", status: "idle", metadata: "", startTime: null,
-				reasoningStartAt: null, reasoningEndAt: null,
+				reasoningStartAt: null, reasoningEndAt: null, effort: null,
 				messages: [], generations: [], genIndex: -1
 			};
 		}
@@ -662,7 +662,10 @@ const AIState = {
 		// Update output area and caption
 		popup.outputArea.value = qn.answer;
 		const mdView = popup.querySelector('#ait-output-markdown');
-		if (mdView) mdView.innerHTML = popup.renderMarkdown(qn.answer || '');
+		if (mdView) {
+			mdView.innerHTML = popup.renderMarkdown(qn.answer || '');
+			popup.bindMarkdownActions(mdView);
+		}
 		const showMd = config.outputMode === 'markdown';
 		popup.outputArea.style.display = showMd ? 'none' : 'block';
 		if (mdView) mdView.style.display = showMd ? 'block' : 'none';
@@ -768,6 +771,7 @@ const AIState = {
 		if (!model) throw new Error(`Model ${modelName} not found`);
 
 		const modelState = this.getModel(questionId, modelName);
+		const effort = config.aiSettings.reasoningEffort || 'none';
 		this.getQuestion(questionId).lastUsedModel = modelName; // Set last used model to current
 
 		// Check cache unless force retry
@@ -788,8 +792,10 @@ const AIState = {
 			startTime: Date.now(),
 			answer: "",
 			reasoning: "",
+			metadata: `Generating with ${modelName}:${effort}...`,
 			reasoningStartAt: null,
 			reasoningEndAt: null,
+			effort: effort,
 		});
 
 		try {
@@ -805,10 +811,11 @@ const AIState = {
 			const completedGen = {
 				answer: out.answer,
 				reasoning: out.reasoning || '',
-				metadata: `Streamed (${timeTaken} ms): ${modelName}`,
+				metadata: `Streamed (${timeTaken} ms): ${modelName}:${effort}`,
 				timeTaken,
 				reasoningStartAt: modelCtx.reasoningStartAt,
 				reasoningEndAt: modelCtx.reasoningStartAt ? Date.now() : null,
+				effort: effort,
 				createdAt: Date.now(),
 			};
 			modelCtx.generations.push(completedGen);
@@ -820,6 +827,7 @@ const AIState = {
 				metadata: completedGen.metadata,
 				startTime: null,
 				reasoningEndAt: completedGen.reasoningEndAt,
+				effort: completedGen.effort,
 			});
 
 			return out.answer;
@@ -827,8 +835,9 @@ const AIState = {
 			this.updateModel(questionId, modelName, {
 				status: 'error',
 				answer: `Error: ${error.message}`,
-				metadata: `Error with ${modelName}`,
-				startTime: null
+				metadata: `Error with ${modelName}:${effort}`,
+				startTime: null,
+				effort: effort,
 			});
 			throw error;
 		}
@@ -1080,11 +1089,57 @@ function createPopupUI() {
 	popup.renderMarkdown = (text = '') => {
 		const esc = s => s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 		let out = esc(text);
-		out = out.replace(/```([a-zA-Z0-9_+.-]+)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>').replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-		out = out.replace(/^###\s+(.+)$/gm, '<h4>$1</h4>').replace(/^##\s+(.+)$/gm, '<h3>$1</h3>').replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
-		out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
-		out = out.replace(/\n/g, '<br>');
+
+		out = out	// Add support for ```lang\ncode``` blocks with copy/select buttons, and also ```code``` blocks without language
+			.replace(/```([a-zA-Z0-9_+.-]+)\n([\s\S]*?)```/g, (_, lang, code) => `<div class="ait-code-block"><div class="ait-code-toolbar" aria-label="Code actions"><button type="button" class="ait-code-action" data-code-action="copy" title="Copy code">⧉</button><button type="button" class="ait-code-action" data-code-action="select" title="Select code">▣</button></div><pre data-lang="${lang}"><code>${code}</code></pre></div>`)
+			.replace(/```([\s\S]*?)```/g, (_, code) => `<div class="ait-code-block"><div class="ait-code-toolbar" aria-label="Code actions"><button type="button" class="ait-code-action" data-code-action="copy" title="Copy code">⧉</button><button type="button" class="ait-code-action" data-code-action="select" title="Select code">▣</button></div><pre><code>${code}</code></pre></div>`);
+
+		out = out
+			.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
+			.replace(/^###\s+(.+)$/gm, '<strong><h4>$1</h4></strong>')
+			.replace(/^##\s+(.+)$/gm, '<strong><h3>$1</h3></strong>')
+			.replace(/^#\s+(.+)$/gm, '<strong><h2>$1</h2></strong>')
+			.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+			.replace(/^\s*(?:-{3,}|\*{3,})\s*$/gm, '<hr>')
+			.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>')
+			.replace(/^\s*([*-])\s+(.+)$/gm, '<li>$2</li>')
+			.replace(/(?:<li>[\s\S]*?<\/li>\s*)+/g, grp => `<ul>${grp.trim()}</ul>`)
+			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+			.replace(/`([^`]+)`/g, '<code>$1</code>')
+			.replace(/\n/g, '<br>');
+
 		return out;
+	};
+
+	popup.bindMarkdownActions = (root) => {
+		if (!root) return;
+		root.querySelectorAll('.ait-code-action').forEach(btn => {
+			btn.onclick = async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+
+				const codeEl = (btn.closest('.ait-code-block'))?.querySelector('code');
+				const code = codeEl?.innerText || '';
+				if (!code) return;
+
+				if (btn.dataset.codeAction === 'copy') {
+					try {
+						await navigator.clipboard.writeText(code);
+						btn.textContent = '✓';
+						setTimeout(() => (btn.textContent = btn.title === 'Copy code' ? '⧉' : '⧉'), 800);
+					} catch { console.warn('Copy failed') }
+				}
+
+				if (btn.dataset.codeAction === 'select') {
+					const range = document.createRange();
+					range.selectNodeContents(codeEl);
+					const sel = window.getSelection();
+					sel.removeAllRanges();
+					sel.addRange(range);
+					codeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+				}
+			};
+		});
 	};
 
 	popup.handleInsert = () => {
@@ -1624,6 +1679,7 @@ GM_addStyle(`
 		--color-subtitle: #555;
 		--color-caption: #555;
 		--color-footer: #777;
+		--color-code: #4a0000;
 		--border-color: #ddd;
 		--border-header: #e9ecef;
 		--shadow-popup: 0 4px 20px rgba(0, 0, 0, 0.2);
@@ -1643,6 +1699,7 @@ GM_addStyle(`
 		--color-subtitle: #aaa;
 		--color-caption: #aaa;
 		--color-footer: #aaa;
+		--color-code: #faebd7;
 		--border-color: #444;
 		--border-header: #333;
 		--shadow-popup: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -1675,7 +1732,7 @@ GM_addStyle(`
 	.ait-model-wrap { position: relative; overflow: visible; min-width: 0; width: 100%; max-width: 100%; }
 	.ait-model-wrap.shortcut::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-	.ait-model-button { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 22px 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: hidden; }
+	.ait-model-button { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: hidden; }
 	.ait-model-button.shortcut { padding-bottom: 13px; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; flex: 1; }
@@ -1734,8 +1791,15 @@ GM_addStyle(`
 	#ait-thought-body { width: 100%; min-height: 74px; max-height: 160px; padding: 8px; border: 0; background: transparent; color: var(--color-text); font-family: monospace; font-size: 11px; resize: vertical; }
 	#ait-output-textarea { width: 100%; height: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; min-height: 150px; box-sizing: border-box; background-color: var(--bg-textarea); color: var(--color-text); }
 	#ait-output-markdown { width: 100%; height: 100%; min-height: 150px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-textarea); color: var(--color-text); font-size: 12px; line-height: 1.45; overflow: auto; }
-	#ait-output-markdown pre { padding: 8px; border-radius: 6px; background: color-mix(in srgb, var(--bg-main) 80%, #000 20%); overflow-x: auto; margin: 6px 0; }
-	#ait-output-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+	#ait-output-markdown pre { position: relative; padding: 8px; border-radius: 6px; background: color-mix(in srgb, var(--bg-main) 80%, #000 20%); overflow-x: auto; margin: 6px 0; }
+	#ait-output-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--color-code); }
+	#ait-output-markdown hr { border: none; border-top: 1px dashed var(--border-color); margin: 12px 0; }
+	.ait-code-block { position: relative; }
+	.ait-code-toolbar { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; opacity: 0; transform: translateY(-2px); transition: opacity 0.15s ease, transform 0.15s ease; pointer-events: none; }
+	.ait-code-block:hover .ait-code-toolbar, 
+	.ait-code-block:focus-within .ait-code-toolbar { opacity: 0.7; transform: translateY(0); pointer-events: auto; }
+	.ait-code-action { width: 20px; height: 20px; border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-main) 88%, transparent 12%); color: var(--color-text); border-radius: 5px; font-size: 11px; line-height: 1; cursor: pointer; box-shadow: var(--shadow-button); backdrop-filter: blur(2px); }
+	.ait-code-action:hover { opacity: 1; background: color-mix(in srgb, var(--bg-main) 96%, #7b97ff 4%); }
 
 	#ait-popup-footer { padding: 10px 15px; background-color: var(--bg-header); border-top: 1px solid var(--border-header); display: flex; justify-content: space-between; font-size: 0.8em; color: var(--color-footer); }
 	#ait-status-text { font-style: italic; }
