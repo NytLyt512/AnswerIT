@@ -50,6 +50,10 @@
 							<label class="form-label">Default Output View</label>
 							<select id="outputMode" class="form-input"><option value="raw">Raw</option><option value="markdown">Markdown</option></select>
 						</div>
+						<div class="form-group">
+							<label class="form-label">Models to Show</label>
+							<select id="modelCount" class="form-input"><option value="4">4 (with flex slot)</option><option value="8">8 (2 rows, flex slot last)</option></select>
+						</div>
 					</div>
 					<div class="toggle-grid">
 						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output <small>(Raw only)</small></span></label>
@@ -130,6 +134,7 @@
 				$('#theme').value = g('theme', 'light');
 				$('#outputMode').value = g('outputMode', 'raw');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
+				$('#modelCount').value = g('modelCount', '4');
 			}
 			render(){ this.renderProviderList(); this.renderModels(); }
 			renderProviderList(){
@@ -287,6 +292,7 @@
 				this.GM.setValue('theme', $('#theme').value);
 				this.GM.setValue('outputMode', $('#outputMode').value);
 				this.GM.setValue('makeAIOutputEditable', $('#makeAIOutputEditable').checked);
+				this.GM.setValue('modelCount', $('#modelCount').value);
 				status($('#preferencesStatus'), '✅ Preferences saved', 'success');
 			}
 			renderSites(){ const sites = window.AnswerIT_Config?.supportedSites || []; $('#sitesGrid').innerHTML = sites.map(s => `<a class="site-card" href="https://${(s.urls?.[0] || '').replace(/^https?:\/\//,'')}" target="_blank"><div class="site-favicon">🌐</div><h3>${s.name}</h3></a>`).join(''); }

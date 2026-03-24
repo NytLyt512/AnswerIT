@@ -220,10 +220,11 @@ const getEnabledModels = () => (config.models || [])
 
 const getVisibleModels = () => {
 	const all = getEnabledModels();
-	const top3 = all.slice(0, 3), rest = all.slice(3);
-	if (!rest.length) return top3;
+	const modelCount = parseInt(GM_getValue('modelCount', '4'), 10);
+	const topN = all.slice(0, modelCount - 1), rest = all.slice(modelCount - 1);
+	if (!rest.length) return topN;
 	const pinned = GM_getValue('modelShortcut4', ''), selected = rest.find(m => m.name === pinned) || rest[0];
-	return [...top3, selected];
+	return [...topN, selected];
 };
 
 const getModelByName = (name) => getEnabledModels().find(m => m.name === name);
