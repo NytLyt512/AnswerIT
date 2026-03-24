@@ -69,6 +69,7 @@
 				<div class="studio">
 					<div class="providers-panel">
 						<div class="panel-head"><strong>Providers</strong><button id="addCustomProvider" class="btn btn-secondary mini">+ Custom</button></div>
+								<div id="availableProvidersChips" class="chip-row" style="min-height:0;"></div>
 						<div id="providerList" class="list"></div>
 					</div>
 					<div class="models-panel">
@@ -136,7 +137,26 @@
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 				$('#modelCount').value = g('modelCount', '4');
 			}
-			render(){ this.renderProviderList(); this.renderModels(); }
+			render(){ this.renderAvailableChips(); this.renderProviderList(); this.renderModels(); }
+					renderAvailableChips(){
+						const chipsContainer = $('#availableProvidersChips');
+						const addedIds = Object.keys(this.state.providers);
+						const available = PRESET.filter(p => !addedIds.includes(p.id));
+						chipsContainer.innerHTML = available.map(p => `<div class="chip" data-provider-id="${p.id}">${p.name}${p.id === 'z.ai' ? '<span class="chip-badge">new</span>' : ''}</div>`).join('');
+			
+						available.forEach((p, idx) => {
+							const chip = chipsContainer.children[idx];
+							chip.onclick = e => {
+								e.preventDefault();
+								chip.classList.add('removing');
+								setTimeout(() => {
+									this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
+									this.expandedProvider = p.id;
+									this.render();
+								}, 220);
+							};
+						});
+					}
 			renderProviderList(){
 				const list = $('#providerList');
 				list.innerHTML = Object.values(this.state.providers).map(p => {
@@ -150,7 +170,7 @@
 							<input class="form-input pname" value="${(p.name || '').replace(/"/g,'&quot;')}" placeholder="Provider name">
 							<input class="form-input endpoint" value="${(p.endpoint || '').replace(/"/g,'&quot;')}" placeholder="Endpoint URL">
 							<input class="form-input key" value="${(p.apiKey || '').replace(/"/g,'&quot;')}" placeholder="API key" type="password" autocomplete="off">
-							<div class="quick-links">${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}<button class="quick-link btn test">🧪 Test</button>${p.custom ? '<button class="quick-link btn del">🗑 Remove</button>' : ''}</div>
+							<div class="quick-links">${p.page ? `<a class="quick-link" target="_blank" href="${p.page}">🔗 Key page</a>` : ''}<button class="quick-link btn test">🧪 Test</button><button class="quick-link btn del">🗑 Delete</button></div>
 						</div>
 					</div>`;
 				}).join('') || '<div class="empty-note">No providers yet.</div>';
@@ -172,7 +192,7 @@
 						} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
 					};
 					const del = el.querySelector('.del');
-					if (del) del.onclick = e => { e.preventDefault(); delete this.state.providers[id]; if (this.expandedProvider === id) this.expandedProvider = Object.keys(this.state.providers)[0] || null; this.renderProviderList(); this.renderModels(); };
+					if (del) del.onclick = e => { e.preventDefault(); el.classList.add('removing'); setTimeout(() => { delete this.state.providers[id]; if (this.expandedProvider === id) this.expandedProvider = Object.keys(this.state.providers)[0] || null; this.renderProviderList(); this.renderModels(); }, 220); };
 				});
 			}
 

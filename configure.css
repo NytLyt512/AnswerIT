@@ -62,10 +62,20 @@
 
 .chip-row { display:flex; gap:.35rem; flex-wrap:wrap }
 .chip { border:1px solid var(--border); background:linear-gradient(135deg,rgba(102,126,234,.14),rgba(118,75,162,.11)); color:var(--text); padding:.34rem .62rem; border-radius:999px; cursor:pointer }
+.chip { border:1px solid var(--border); background:linear-gradient(135deg,rgba(102,126,234,.14),rgba(118,75,162,.11)); color:var(--text); padding:.34rem .62rem; border-radius:999px; cursor:pointer; animation:slideInChip .22s ease; transition:all .2s ease }
+.chip:hover { background:linear-gradient(135deg,rgba(102,126,234,.24),rgba(118,75,162,.2)); transform:scale(1.04) }
+.chip.removing { animation:slideOutChip .22s ease; opacity:0; pointer-events:none }
+@keyframes slideInChip { from { opacity:0; transform:translateX(-8px); gap:0 } to { opacity:1; transform:translateX(0); gap:.35rem } }
+@keyframes slideOutChip { from { opacity:1; transform:translateX(0) } to { opacity:0; transform:translateX(-8px) } }
+.chip-badge { display:inline-block; font-size:.6rem; margin-left:.25rem; padding:.15rem .35rem; background:rgba(239,68,68,.2); color:#ef4444; border-radius:10px; font-weight:700; white-space:nowrap }
 
 .list { display:flex; flex-direction:column; gap:.45rem; overflow:auto; max-height:500px; padding-right:.1rem; height:stretch; }
 
 .provider-item { border:1px solid var(--border); background:var(--card); border-radius:10px; overflow:hidden }
+.provider-item { border:1px solid var(--border); background:var(--card); border-radius:10px; overflow:hidden; animation:slideInProvider .22s ease; transition:all .2s ease }
+.provider-item.removing { animation:slideOutProvider .22s ease; opacity:0; pointer-events:none }
+@keyframes slideInProvider { from { opacity:0; transform:translateY(-8px); height:0 } to { opacity:1; transform:translateY(0); height:auto } }
+@keyframes slideOutProvider { from { opacity:1; transform:translateY(0) } to { opacity:0; transform:translateY(-8px); height:0 } }
 .provider-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.45rem .55rem }
 .provider-title { border:0; background:transparent; color:var(--text); font-weight:600; cursor:pointer; text-align:left }
 .provider-body { display:flex; flex-direction:column; gap:.45rem; border-top:1px solid var(--border); padding:.55rem; max-height:0; opacity:0; overflow:hidden; transform:translateY(-4px); transition:max-height .22s ease, opacity .22s ease, transform .22s ease, padding .22s ease }
