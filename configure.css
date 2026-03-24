@@ -1,8 +1,31 @@
-:root { --primary:#667eea; --secondary:#764ba2; --success:#10b981; --error:#ef4444; --warning:#f59e0b; --bg:#f8fafc; --card:#fff; --fill:#f7f8fe; --text:#1f2937; --text-light:#6b7280; --border:#e5e7eb; --shadow:0 10px 25px -5px rgba(0,0,0,.1) }
+:root { 
+    --primary:#667eea; 
+    --secondary:#764ba2; 
+    --success:#10b981; 
+    --error:#ef4444; 
+    --warning:#f59e0b; 
+    --bg:#f8fafc; 
+    --card:#fff; 
+    --fill:#f7f8fe; 
+    --text:#1f2937; 
+    --text-light:#6b7280; 
+    --border:#e5e7eb; 
+    --shadow:0 10px 25px -5px rgba(0,0,0,.1) 
+}
+.dark { --bg:#0f172a; 
+    --card:#1e293b; 
+    --fill:#212d44; 
+    --text:#f1f5f9; 
+    --text-light:#94a3b8; 
+    --border:#334155 
+}
 
-.dark { --bg:#0f172a; --card:#1e293b; --fill:#212d44; --text:#f1f5f9; --text-light:#94a3b8; --border:#334155 }
-
-* { margin:0; padding:0; box-sizing:border-box } body { font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.55 }
+* { margin:0; padding:0; box-sizing:border-box } 
+body { font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.55 }
+/* scrollbar */
+::-webkit-scrollbar { width:8px; height:8px }
+::-webkit-scrollbar-thumb { background:var(--secondary); border-radius:4px }
+::-webkit-scrollbar-thumb:hover { background:var(--secondary) }
 
 .hero { background:linear-gradient(135deg,var(--primary),var(--secondary)); padding:2.4rem 1rem; text-align:center; color:#fff; position:relative }
 .hero h1 { font-size:clamp(2.2rem,5vw,3.8rem); font-weight:800 }
@@ -51,8 +74,8 @@
 .btn-secondary { background:var(--border); color:var(--text) }
 .btn.mini { padding:.32rem .62rem; font-size:.78rem }
 
-.quick-links { display:flex; gap:.45rem; flex-wrap:wrap; margin-block:.55rem }
-.quick-link { display:inline-flex; align-items:center; gap:.35rem; padding:.34rem .66rem; border-radius:8px; border:1px solid var(--border); background:rgba(102,126,234,.08); color:var(--primary); text-decoration:none; font-size:.82rem }
+.quick-links { display:flex; gap:1.45rem; flex-wrap:wrap; margin-block:1.55rem }
+.quick-link { display:inline-flex; align-items:center; gap:.35rem; padding:.5rem .75rem; border-radius:8px; border:1px solid var(--border); background:rgba(102,126,234,.08); color:var(--primary); text-decoration:none; font-size:.82rem }
 
 .studio { display:flex; gap:.8rem }
 .providers-panel { flex:1; border:1px solid var(--border); background:var(--fill); border-radius:12px; padding:.6rem; min-height:360px; display:flex; flex-direction:column; gap:.5rem }
@@ -71,6 +94,7 @@
 .chip-badge { display:inline-block; font-size:.6rem; margin-left:.25rem; padding:.15rem .35rem; background:rgba(239,68,68,.2); color:#ef4444; border-radius:10px; font-weight:700; white-space:nowrap }
 
 .list { display:flex; flex-direction:column; gap:.45rem; overflow:auto; max-height:500px; padding-right:.1rem; height:stretch; }
+#modelsList { overflow-y:auto; overflow-x:hidden; }
 
 .provider-item { border:1px solid var(--border); background:var(--card); border-radius:10px; overflow:hidden }
 .provider-item { border:1px solid var(--border); background:var(--card); border-radius:10px; overflow:hidden; animation:slideInProvider .22s ease; transition:all .2s ease }
@@ -86,7 +110,7 @@
 .switch.compact { display:inline-flex; align-items:center }
 .switch.compact input { accent-color:var(--primary) }
 
-.model-row { display:grid; grid-template-columns:20px auto 2fr 1fr auto auto auto; gap:.35rem; align-items:center; border:1px solid var(--border); background:var(--card); padding:.4rem; border-radius:10px; position:relative }
+.model-row { display:grid; grid-template-columns:20px auto 2fr 1fr auto auto auto; gap:.35rem; align-items:center; border:1px solid var(--border); background:var(--card); padding:.4rem; border-radius:10px; position:relative; transition:background .18s ease, border-color .18s ease, opacity .18s ease }
 .model-row.disabled { opacity:.5; background:color-mix(in srgb,var(--card) 70%, #888 30%) }
 
 .drag { font-size:12px; cursor:grab; opacity:.65; text-align:center; user-select:none }

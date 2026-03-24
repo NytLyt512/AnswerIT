@@ -10,7 +10,7 @@
 <body>
 	<div class="hero">
 		<button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
-		<h1>🎯 AnswerIT</h1>
+		<h1>AnswerIT Configuration</h1>
 		<p>Providers • models • effort controls</p>
 		<div id="detectionStatus" class="detection-status">🔍 Detecting userscript...</div>
 	</div>
@@ -29,7 +29,7 @@
 					<a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 GitHub</a>
 					<a href="https://github.com/NytLyt512/issues/new" target="_blank" class="quick-link">🐛 Report issue</a>
 				</div>
-				<button class="btn btn-primary" id="installScript">⬇️ Install / Reinstall Userscript</button>
+				<button class="btn btn-primary" style="margin-block: 8px;" id="installScript">⬇️ Install / Reinstall Userscript</button>
 			</section>
 
 			<section class="card">
@@ -54,11 +54,11 @@
 							<label class="form-label">Models to Show</label>
 							<select id="modelCount" class="form-input"><option value="4">4 (with flex slot)</option><option value="8">8 (2 rows, flex slot last)</option></select>
 						</div>
+						<div class="toggle-grid">
+							<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output <small>(Raw only)</small></span></label>
+						</div>
+						<button type="submit" class="btn btn-primary" style="height: 60%; align-self: center;">Save Preferences</button>
 					</div>
-					<div class="toggle-grid">
-						<label class="toggle-label"><input type="checkbox" id="makeAIOutputEditable" class="toggle-input"><span class="toggle-slider"></span><span class="toggle-text">Editable output <small>(Raw only)</small></span></label>
-					</div>
-					<button type="submit" class="btn btn-primary">Save Preferences</button>
 				</form>
 			</section>
 
@@ -150,6 +150,7 @@
 				$('#addModel').onclick = () => this.addModel();
 				$('#saveAIConfig').onclick = () => this.saveAIConfig();
 				$('#settingsForm').onsubmit = e => (e.preventDefault(), this.savePrefs());
+				document.addEventListener('click', e => { if (!e.target.closest('.model-opt-wrap')) $$('.model-opt-wrap.open').forEach(w => w.classList.remove('open')); });
 			}
 			applyTheme(){ document.documentElement.classList.toggle('dark', this.theme === 'dark'); localStorage.setItem('pageTheme', this.theme); $('#themeToggle').textContent = this.theme === 'dark' ? '☀️' : '🌙'; }
 			detect(){ let i=0,max=16; const poll = () => { i++; if (window.AnswerIT_Config?.GM_getValue) return this.onReady(); $('#detectionStatus').textContent = `🔍 Detecting userscript... (${i}/${max})`; if (i < max) return setTimeout(poll, Math.min(150 * 2 ** (i - 1), 2000)); status($('#detectionStatus'), '⚠ Userscript not detected. Install it first.', 'warning'); }; poll(); }
@@ -243,8 +244,12 @@
 				$$('.provider-item').forEach(el => {
 					const id = el.dataset.id, p = this.state.providers[id];
 					const sync = () => Object.assign(p, { name: el.querySelector('.pname').value.trim(), endpoint: el.querySelector('.endpoint').value.trim(), apiKey: el.querySelector('.key').value.trim(), enabled: el.querySelector('.provider-enabled').checked });
-					const toggle = (e) => { if (e.target.closest('.provider-enabled')) return; this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); this.renderRecommendedModelChips(); };
-					el.querySelector('.provider-title').onclick = toggle;
+					const toggle = (e) => {
+						if (e.target.closest('.provider-enabled')) return;
+						this.expandedProvider = this.expandedProvider === id ? null : id;
+						$$('.provider-item').forEach(row => row.classList.toggle('expanded', row.dataset.id === this.expandedProvider));
+						this.renderRecommendedModelChips();
+					};
 					el.querySelector('.provider-head').onclick = toggle;
 					el.querySelector('.provider-enabled').oninput = sync;
 					el.querySelectorAll('.pname,.endpoint,.key').forEach(inp => inp.oninput = sync);
@@ -254,7 +259,7 @@
 						try {
 							const r = await this.GM.fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
 							status($('#apiStatus'), r.ok ? `✅ ${p.name || p.id} is valid` : `❌ test failed (${r.status})`, r.ok ? 'success' : 'error');
-							if (r.ok && !p.enabled) { p.enabled = true; this.renderProviderList(); }	// if success then enable the provider for convenience
+							if (r.ok && !p.enabled) { p.enabled = true; el.querySelector('.provider-enabled').checked = true; this.renderModels(); }	// if success then enable the provider for convenience
 						} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
 					};
 					const del = el.querySelector('.del');
@@ -277,7 +282,7 @@
 			renderModels(){
 				const providers = Object.values(this.state.providers), enabledProviders = providers.filter(p => p.enabled), list = $('#modelsList');
 				list.innerHTML = this.state.models.map((m, i) => `
-					<div class="model-row ${m.enabled === false ? 'disabled' : ''}" data-idx="${i}" draggable="true">
+					<div class="model-row ${m.enabled === false ? 'disabled' : ''}" data-idx="${i}">
 						<div class="drag">⋮⋮</div>
 						<label class="switch compact"><input class="en" type="checkbox" ${m.enabled !== false ? 'checked' : ''}><span></span></label>
 						<div class="model-main">
@@ -350,11 +355,23 @@
 						if (pick) { row.querySelector('.dn').value = pick.display; sync(); }
 					};
 					row.querySelectorAll('.en,.dn,.rs,.im,.sub,.model-opt-editor').forEach(el => el.oninput = sync);
-					row.querySelector('.opt').onclick = e => { e.preventDefault(); row.querySelector('.model-opt-wrap').classList.toggle('open'); };
+					const optWrap = row.querySelector('.model-opt-wrap');
+					const optPop = row.querySelector('.model-opt-pop');
+					row.querySelector('.opt').onclick = e => {
+						e.preventDefault();
+						e.stopPropagation();
+						$$('.model-opt-wrap.open').forEach(w => { if (w !== optWrap) w.classList.remove('open'); });
+						optWrap.classList.toggle('open');
+					};
+					optPop.onclick = e => e.stopPropagation();
 					row.querySelector('.del').onclick = e => { e.preventDefault(); this.state.models.splice(i, 1); this.renderModels(); };
 
+					const dragHandle = row.querySelector('.drag');
+					row.draggable = false;
+					dragHandle.onmousedown = () => { row.draggable = true; };
+					dragHandle.onmouseup = () => { row.draggable = false; };
 					row.ondragstart = () => { dragFrom = i; row.classList.add('dragging'); };
-					row.ondragend = () => row.classList.remove('dragging');
+					row.ondragend = () => { row.classList.remove('dragging'); row.draggable = false; };
 					row.ondragover = e => e.preventDefault();
 					row.ondrop = e => {
 						e.preventDefault();
