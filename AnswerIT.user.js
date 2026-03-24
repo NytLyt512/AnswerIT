@@ -534,9 +534,8 @@ const AIProviders = {
 			headers['HTTP-Referer'] = location.origin;
 			headers['X-Title'] = 'AnswerIT';
 		}
-		const effortMap = { high: 'high', med: 'medium', low: 'low', none: null };
-		const supportsEffortParam = ['groq', 'openai', 'openrouter'].includes(provider);
-		const reasoningEffort = model.reasoning && supportsEffortParam ? effortMap[config.aiSettings.reasoningEffort || 'none'] : null;
+		const effortMap = { high: 'high', med: 'medium', low: 'low', min: 'minimal', none: null };
+		const reasoningEffort = model.reasoning ? effortMap[config.aiSettings.reasoningEffort || 'none'] : null;
 		const payload = {
 			model: model.name,
 			messages,
@@ -544,6 +543,11 @@ const AIProviders = {
 			...(model.options || {})
 		};
 		if (reasoningEffort && payload.reasoning_effort === undefined) payload.reasoning_effort = reasoningEffort;
+		if (provider === 'gemini') {
+			delete payload.reasoning_effort; // Gemini uses a different config structure for reasoning effort
+			if (!payload.extra_body) payload.extra_body = {}; payload.extra_body.google = { thinking_config: { include_thoughts: true } };
+			if (reasoningEffort) payload.extra_body.google.thinking_config.thinking_level = reasoningEffort;
+		}
 		return AIProviders._BaseProvider.streamResponse(
 			`${p.endpoint.replace(/\/$/, '')}/chat/completions`,
 			headers,
@@ -1076,7 +1080,7 @@ function createPopupUI() {
 	popup.renderMarkdown = (text = '') => {
 		const esc = s => s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 		let out = esc(text);
-		out = out.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+		out = out.replace(/```([a-zA-Z0-9_+.-]+)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>').replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
 		out = out.replace(/^###\s+(.+)$/gm, '<h4>$1</h4>').replace(/^##\s+(.+)$/gm, '<h3>$1</h3>').replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
 		out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
 		out = out.replace(/\n/g, '<br>');
@@ -1127,13 +1131,19 @@ function createPopupUI() {
 			if (!focusedEl) return;
 			cleanup();
 
-			// Check if it's an ACE editor (like leetcode or talentely)
+			// Check if it's an ACE editor (like talentely)
 			const aceContainer = focusedEl.closest('.ace_editor');
-			if (aceContainer && (window.ace || ace)) {
+			if (aceContainer && (unsafeWindow.ace || ace)) {
 				btn.innerHTML = `Inserting... This may take a few seconds.`;
-				let editor = (window.ace || ace).edit(aceContainer);
+				let editor = (unsafeWindow.ace || ace).edit(aceContainer);
 				// workaround for some editors that block pasting
 				for (let i = 0; i < text.length; i += 15) editor.insert(text.slice(i, i + 15));
+			}
+			// Check if it's a Monaco editor (like LeetCode)
+			else if (focusedEl.classList.contains('monaco-mouse-cursor-text') && unsafeWindow.monaco) {
+				btn.innerHTML = `Inserting... This may take a few seconds.`;
+				const editor = unsafeWindow.monaco.editor.getEditors().find(e => e.getDomNode()?.contains(focusedEl));
+				for (let i = 0; i < text.length; i += 15) editor.trigger('keyboard', 'type', { text: text.slice(i, i + 15) });
 			}
 			// Try setting value directly if possible
 			else if ("value" in focusedEl) {
@@ -1259,11 +1269,19 @@ function createPopupUI() {
 				const pop = document.createElement('div');
 				pop.className = 'ait-shortcut-popover';
 				pop.innerHTML = rest.map(r => `<button data-model="${r.name}" title="${r.subtitle}">${r.displayName} <span>${r.subtitle}</span></button>`).join('');
+				let hideTimer = null;
+				const openPop = () => { if (hideTimer) clearTimeout(hideTimer); wrap.classList.add('open'); };
+				const closePop = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(() => wrap.classList.remove('open'), 180); };
+				btn.addEventListener('mouseenter', openPop);
+				btn.addEventListener('mouseleave', closePop);
+				pop.addEventListener('mouseenter', openPop);
+				pop.addEventListener('mouseleave', closePop);
 				pop.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
 					e.stopPropagation();
 					const selected = e.currentTarget.dataset.model;
 					GM_setValue('modelShortcut4', selected);
 					defaultModel = selected;
+					wrap.classList.remove('open');
 					popup.renderModelButtons();
 				}));
 				wrap.appendChild(pop);
@@ -1643,7 +1661,7 @@ GM_addStyle(`
 	#ait-popup-version { opacity: 0.5; font-size: 12px; color: var(--color-footer); font-family: monospace; }
 	#ait-popup-version:hover { text-decoration: underline; }
 
-	#ait-popup-controls { display: flex; align-items: center; gap: 5px; }
+	#ait-popup-controls { display: flex; align-items: baseline; gap: 5px; }
 	#ait-popup-controls > button { background: none; border: none; cursor: pointer; font-size: 20px; color: var(--color-text); }
 	#ait-opacity-toggle { transition: all 0.3s ease; position: relative; cursor: grab; width: 24px; height: 24px; border-radius: 12px; }
 	#ait-opacity-toggle.slider { height: 72px; width: 24px; background: var(--border-color); font-size: 0; }
@@ -1653,11 +1671,11 @@ GM_addStyle(`
 	#ait-popup-content { padding: 15px; overflow-y: auto; overflow-x: hidden; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 
 	/* Flat top-4 model row */
-	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; align-items: stretch; }
-	.ait-model-wrap { position: relative; overflow: visible; min-width: 0; }
+	#ait-models-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; transition: all 0.3s ease; overflow: visible; align-items: stretch; justify-items: stretch; }
+	.ait-model-wrap { position: relative; overflow: visible; min-width: 0; width: 100%; max-width: 100%; }
 	.ait-model-wrap.shortcut::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
 	.ait-model-setup-cta { grid-column: 1 / -1; border: 1px dashed var(--border-color); background: linear-gradient(135deg, rgba(102,126,234,.15), rgba(118,75,162,.12)); color: var(--color-text); padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-	.ait-model-button { width: 100%; min-width: 0; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 22px 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: hidden; }
+	.ait-model-button { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 22px 8px 10px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-button); position: relative; min-height: 36px; text-align: left; overflow: hidden; }
 	.ait-model-button.shortcut { padding-bottom: 13px; }
 	.ait-model-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-button-hover); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); }
 	.ait-model-name { font-weight: 500; font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; flex: 1; }
@@ -1675,7 +1693,8 @@ GM_addStyle(`
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
 	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
-	.ait-shortcut-popover { position: absolute; right: 0; top: calc(100% + 1px); z-index: 10020; width: 230px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); }
+	.ait-shortcut-popover { position: absolute; right: 0; top: calc(100% + 1px); z-index: 10030; width: 230px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); contain: content; }
+	.ait-model-wrap.shortcut.open .ait-shortcut-popover,
 	.ait-model-wrap.shortcut:hover .ait-shortcut-popover,
 	.ait-model-wrap.shortcut:focus-within .ait-shortcut-popover,
 	.ait-shortcut-popover:hover { display: flex; }

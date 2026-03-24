@@ -271,7 +271,7 @@
 				});
 			}
 			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.expandedProvider = pid; this.renderProviderList(); this.renderModels(); }
-			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:false, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
+			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:true, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
 			saveAIConfig(){
 				this.GM.setValue('providers', this.state.providers);
 				this.GM.setValue('models', this.state.models.filter(m => m.name && m.providerId));
