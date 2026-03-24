@@ -208,7 +208,8 @@ const getEnabledModels = () => (config.models || [])
 		id: m.id || `${m.providerId}:${m.name}:${i}`,
 		name: m.name,
 		displayName: m.displayName || m.name.split('/').pop().slice(0, 14),
-		subtitle: m.subtitle || `${(config.providers[m.providerId]?.name || m.providerId)}`,
+		providerLabel: (config.providers[m.providerId]?.name || m.providerId),
+		subtitle: m.subtitle || '',
 		order: i,
 		color: m.color || ['#D2F8E5', '#E8E6FF', '#E5F7FF', '#FFE5F0'][i % 4],
 		tooltip: `${m.name} via ${config.providers[m.providerId]?.endpoint || 'custom endpoint'}`,
@@ -1317,17 +1318,18 @@ function createPopupUI() {
 		}
 		visible.forEach((model, idx) => {
 			const isShortcut = idx === modelCount - 1 && rest.length;
+			const subtitleTooltip = [`${model.providerLabel}: ${model.name}`, model.subtitle].filter(Boolean).join('\n');
 			const wrap = document.createElement('div');
 			wrap.className = `ait-model-wrap ${isShortcut ? 'shortcut' : ''}`;
 			const btn = Object.assign(document.createElement('button'), {
-				innerHTML: `<button class="ait-model-button ${isShortcut ? 'shortcut' : ''}" data-model="${model.name}" title="${model.subtitle}\n\n${model.tooltip}" style="background-color: ${getThemedColor(model.color)};"><span class="ait-model-name">${model.displayName}</span><div class="ait-model-status-container"><span class="ait-model-progress">⠋</span><div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div></div>${isShortcut ? '<div class="ait-shortcut-corner">⋯</div>' : ''}</button>`
+				innerHTML: `<button class="ait-model-button ${isShortcut ? 'shortcut' : ''}" data-model="${model.name}" title="${subtitleTooltip}" style="background-color: ${getThemedColor(model.color)};"><span class="ait-model-name">${model.displayName}</span><div class="ait-model-status-container"><span class="ait-model-progress">⠋</span><div class="ait-model-status-icon"><span class="ait-model-success-icon">✔</span><span class="ait-model-retry-icon">↺</span></div></div>${isShortcut ? '<div class="ait-shortcut-corner">⋯</div>' : ''}</button>`
 			}).firstElementChild;
 			btn.onclick = () => handleGenerateAnswer(model.name);
 			btn.querySelector('.ait-model-status-icon')?.addEventListener('click', (e) => { e.stopPropagation(); handleGenerateAnswer(model.name, true); });
 			if (isShortcut) {
 				const pop = document.createElement('div');
 				pop.className = 'ait-shortcut-popover';
-				pop.innerHTML = rest.map(r => `<button data-model="${r.name}" title="${r.subtitle}">${r.displayName} <span>${r.subtitle}</span></button>`).join('');
+				pop.innerHTML = rest.map(r => `<button data-model="${r.name}" title="${[r.providerLabel, r.subtitle].filter(Boolean).join('\n')}">${r.displayName} <span>${r.subtitle || r.providerLabel}</span></button>`).join('');
 				let hideTimer = null;
 				const openPop = () => { if (hideTimer) clearTimeout(hideTimer); wrap.classList.add('open'); };
 				const closePop = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(() => wrap.classList.remove('open'), 180); };

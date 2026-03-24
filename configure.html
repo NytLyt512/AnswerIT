@@ -74,6 +74,7 @@
 					</div>
 					<div class="models-panel">
 						<div class="panel-head"><strong>Models (drag to reorder)</strong><button id="addModel" class="btn btn-secondary mini">+ Model</button></div>
+						<div id="recommendedModelsChips" class="chip-row chip-row-models"></div>
 						<div id="modelsList" class="list"></div>
 					</div>
 				</div>
@@ -100,6 +101,36 @@
             { id:'ollama', name:'Ollama', endpoint:'http://localhost:11434/v1', page:'https://ollama.com/download' },
             { id:'z.ai', name:'Z.AI', endpoint:'https://api.z.ai/api/paas/v4', page:'https://z.ai/manage-apikey/apikey-list' },
 		];
+		const RECOMMENDED_MODELS = {
+			gemini: [
+				{ name:'models/gemini-3.1-flash-lite-preview', displayName:'Gemini 3.1 Flash Lite', subtitle:'Ultra-fast answers with low token cost', reasoning:true, imageInput:true },
+				{ name:'models/gemini-flash-latest', displayName:'Gemini Flash Latest', subtitle:'Balanced speed and quality for mixed tasks', reasoning:true, imageInput:true },
+			],
+			groq: [
+				{ name:'llama-3.3-70b-versatile', displayName:'Llama 3.3 70B Versatile', subtitle:'Strong general reasoning and coding', reasoning:true, imageInput:false },
+			],
+			openrouter: [
+				{ name:'nvidia/nemotron-3-super-120b-a12b:free', displayName:'Nemotron 3 Super 120B (Free)', subtitle:'Large-context reasoning with free tier availability', reasoning:true, imageInput:false },
+				{ name:'stepfun/step-3.5-flash:free', displayName:'Step 3.5 Flash (Free)', subtitle:'Fast draft-quality responses', reasoning:true, imageInput:false },
+				{ name:'minimax/minimax-m2.5:free', displayName:'MiniMax M2.5 (Free)', subtitle:'Good long-form generation on free quota', reasoning:true, imageInput:false },
+				{ name:'qwen/qwen3-coder:free', displayName:'Qwen3 Coder (Free)', subtitle:'Code-focused assistant for debugging and generation', reasoning:true, imageInput:false },
+			],
+			nvidia: [
+				{ name:'deepseek-ai/deepseek-v3.1-terminus', displayName:'DeepSeek V3.1 Terminus', subtitle:'Heavy reasoning and technical problem-solving', reasoning:true, imageInput:false },
+				{ name:'moonshotai/kimi-k2.5', displayName:'Kimi K2.5', subtitle:'Long-context analysis and structured outputs', reasoning:true, imageInput:false },
+				{ name:'minimaxai/minimax-m2.5', displayName:'MiniMax M2.5', subtitle:'Balanced quality for broad assistant tasks', reasoning:true, imageInput:false },
+				{ name:'z-ai/glm5', displayName:'GLM 5', subtitle:'General-purpose model with stable reasoning', reasoning:true, imageInput:false },
+				{ name:'moonshotai/kimi-k2-instruct-0905', displayName:'Kimi K2 Instruct 0905', subtitle:'Instruction-tuned model for reliable following', reasoning:true, imageInput:false },
+			],
+			ollama: [
+				{ name:'carstenuhlig/omnicoder-9b:latest', displayName:'OmniCoder 9B', subtitle:'Local coding assistant with fast iteration', reasoning:true, imageInput:false },
+				{ name:'kimi-k2.5:cloud', displayName:'Kimi K2.5 (Cloud)', subtitle:'Cloud-backed long-context reasoning model', reasoning:true, imageInput:false },
+			],
+			'z.ai': [
+				{ name:'glm-4.7-flash', displayName:'GLM 4.7 Flash', subtitle:'Fast low-latency responses for daily use', reasoning:true, imageInput:false },
+				{ name:'glm-4.6v-flash', displayName:'GLM 4.6V Flash', subtitle:'Vision-capable flash model for image prompts', reasoning:true, imageInput:true },
+			],
+		};
 		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.cssText += 'display: flex; transition: all 1.7s allow-discrete;'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
 
 		class ConfigManager {
@@ -137,26 +168,60 @@
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 				$('#modelCount').value = g('modelCount', '4');
 			}
-			render(){ this.renderAvailableChips(); this.renderProviderList(); this.renderModels(); }
-					renderAvailableChips(){
-						const chipsContainer = $('#availableProvidersChips');
-						const addedIds = Object.keys(this.state.providers);
-						const available = PRESET.filter(p => !addedIds.includes(p.id));
-						chipsContainer.innerHTML = available.map(p => `<div class="chip" data-provider-id="${p.id}">${p.name}${p.id === 'z.ai' ? '<span class="chip-badge">new</span>' : ''}</div>`).join('');
-			
-						available.forEach((p, idx) => {
-							const chip = chipsContainer.children[idx];
-							chip.onclick = e => {
-								e.preventDefault();
-								chip.classList.add('removing');
-								setTimeout(() => {
-									this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
-									this.expandedProvider = p.id;
-									this.render();
-								}, 220);
-							};
-						});
-					}
+			render(){ this.renderAvailableChips(); this.renderProviderList(); this.renderModels(); this.renderRecommendedModelChips(); }
+			getVisibleModelNameSet(){
+				const enabled = this.state.models.filter(m => m?.name && m?.providerId && m?.enabled !== false);
+				const modelCount = parseInt($('#modelCount')?.value || this.GM.getValue?.('modelCount', '4') || '4', 10) || 4;
+				const topN = enabled.slice(0, modelCount - 1), rest = enabled.slice(modelCount - 1);
+				if (!rest.length) return new Set(topN.map(m => m.name));
+				const flexSlotKey = `modelShortcut${modelCount}`;
+				const pinned = this.GM.getValue?.(flexSlotKey, '') || '';
+				const selected = rest.find(m => m.name === pinned) || rest[0];
+				return new Set([...topN, selected].map(m => m.name));
+			}
+			renderRecommendedModelChips(){
+				const chipsContainer = $('#recommendedModelsChips');
+				if (!chipsContainer) return;
+				const providerId = this.expandedProvider;
+				const recommended = providerId ? (RECOMMENDED_MODELS[providerId] || []) : [];
+				if (!recommended.length) { chipsContainer.innerHTML = ''; return; }
+
+				const existingForProvider = new Set(this.state.models.filter(m => m.providerId === providerId && m.name).map(m => m.name));
+				const visibleNames = this.getVisibleModelNameSet();
+				const available = recommended.filter(m => !existingForProvider.has(m.name) && !visibleNames.has(m.name));
+				chipsContainer.innerHTML = available.map(m => `<button class="chip model-chip" type="button" data-model-id="${m.name.replace(/"/g,'&quot;')}" title="${(m.subtitle || '').replace(/"/g,'&quot;')}">+ ${m.displayName}</button>`).join('');
+
+				available.forEach((m, idx) => {
+					const chip = chipsContainer.children[idx];
+					chip.onclick = e => {
+						e.preventDefault();
+						chip.classList.add('removing');
+						setTimeout(() => {
+							this.state.models.push({ id:rid(), name:m.name, displayName:m.displayName || '', subtitle:m.subtitle || '', providerId, enabled:true, color:'', options:{}, reasoning:!!m.reasoning, imageInput:!!m.imageInput });
+							this.renderModels();
+						}, 220);
+					};
+				});
+			}
+			renderAvailableChips(){
+				const chipsContainer = $('#availableProvidersChips');
+				const addedIds = Object.keys(this.state.providers);
+				const available = PRESET.filter(p => !addedIds.includes(p.id));
+				chipsContainer.innerHTML = available.map(p => `<div class="chip" data-provider-id="${p.id}">${p.name}${p.id === 'z.ai' ? '<span class="chip-badge">new</span>' : ''}</div>`).join('');
+	
+				available.forEach((p, idx) => {
+					const chip = chipsContainer.children[idx];
+					chip.onclick = e => {
+						e.preventDefault();
+						chip.classList.add('removing');
+						setTimeout(() => {
+							this.state.providers[p.id] = { ...p, apiKey:'', enabled:false, headers:{} };
+							this.expandedProvider = p.id;
+							this.render();
+						}, 220);
+					};
+				});
+			}
 			renderProviderList(){
 				const list = $('#providerList');
 				list.innerHTML = Object.values(this.state.providers).map(p => {
@@ -178,7 +243,7 @@
 				$$('.provider-item').forEach(el => {
 					const id = el.dataset.id, p = this.state.providers[id];
 					const sync = () => Object.assign(p, { name: el.querySelector('.pname').value.trim(), endpoint: el.querySelector('.endpoint').value.trim(), apiKey: el.querySelector('.key').value.trim(), enabled: el.querySelector('.provider-enabled').checked });
-					const toggle = (e) => { if (e.target.closest('.provider-enabled')) return; this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); };
+					const toggle = (e) => { if (e.target.closest('.provider-enabled')) return; this.expandedProvider = this.expandedProvider === id ? null : id; this.renderProviderList(); this.renderRecommendedModelChips(); };
 					el.querySelector('.provider-title').onclick = toggle;
 					el.querySelector('.provider-head').onclick = toggle;
 					el.querySelector('.provider-enabled').oninput = sync;
@@ -226,11 +291,11 @@
 							<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
 						</div>
 						<div class="model-opt-wrap">
-							<button class="btn btn-secondary mini opt" title="Subtitle + advanced options">⚙️</button>
+							<button class="btn btn-secondary mini opt" title="Description + advanced options">⚙️</button>
 							<div class="model-opt-pop">
 								<div class="model-opt-title">Model details & advanced options</div>
-								<div class="model-opt-help">Set a short subtitle for the model picker. JSON is merged into the final request body for this model only.</div>
-								<label class="model-opt-label">Subtitle (optional)</label>
+								<div class="model-opt-help">Set a short description for the model picker. JSON is merged into the final request body for this model only.</div>
+								<label class="model-opt-label">Description (optional)</label>
 								<input class="form-input sub" value="${(m.subtitle || '').replace(/"/g,'&quot;')}" placeholder="e.g. Fast • Good for MCQ">
 								<label class="model-opt-label">Extra request options (JSON)</label>
 								<textarea class="model-opt-editor">${JSON.stringify(m.options || {}, null, 2)}</textarea>
@@ -302,6 +367,7 @@
 
 					sync();
 				});
+				this.renderRecommendedModelChips();
 			}
 			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.expandedProvider = pid; this.renderProviderList(); this.renderModels(); }
 			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', subtitle:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:true, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
