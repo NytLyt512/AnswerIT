@@ -107,7 +107,7 @@ const config = {
 	/** @type {{ [id: string]: {id:string,name:string,endpoint:string,page:string,apiKey:string,enabled:boolean,headers:Record<string,string>,custom?:boolean} }} */
 	providers: Object.assign(_defaultProviders(), GM_getValue('providers', {})),
 
-	/** @type {Array<{id:string,name:string,displayName?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
+	/** @type {Array<{id:string,name:string,displayName?:string,subtitle?:string,providerId:string,enabled:boolean,color?:string,options?:Record<string,any>}>} */
 	models: GM_getValue('models', []),
 
 	/** @type {{ reasoningEffort: 'high'|'med'|'low'|'none' }} */
@@ -208,7 +208,7 @@ const getEnabledModels = () => (config.models || [])
 		id: m.id || `${m.providerId}:${m.name}:${i}`,
 		name: m.name,
 		displayName: m.displayName || m.name.split('/').pop().slice(0, 14),
-		subtitle: `${(config.providers[m.providerId]?.name || m.providerId)}`,
+		subtitle: m.subtitle || `${(config.providers[m.providerId]?.name || m.providerId)}`,
 		order: i,
 		color: m.color || ['#D2F8E5', '#E8E6FF', '#E5F7FF', '#FFE5F0'][i % 4],
 		tooltip: `${m.name} via ${config.providers[m.providerId]?.endpoint || 'custom endpoint'}`,

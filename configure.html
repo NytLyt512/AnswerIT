@@ -189,6 +189,7 @@
 						try {
 							const r = await this.GM.fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
 							status($('#apiStatus'), r.ok ? `✅ ${p.name || p.id} is valid` : `❌ test failed (${r.status})`, r.ok ? 'success' : 'error');
+							if (r.ok && !p.enabled) { p.enabled = true; this.renderProviderList(); }	// if success then enable the provider for convenience
 						} catch (err) { status($('#apiStatus'), `❌ ${err.message}`, 'error'); }
 					};
 					const del = el.querySelector('.del');
@@ -225,8 +226,13 @@
 							<label class="tiny-check"><input class="im" type="checkbox" ${m.imageInput ? 'checked' : ''}> image</label>
 						</div>
 						<div class="model-opt-wrap">
-							<button class="btn btn-secondary mini opt" title="Model options JSON">⚙️</button>
+							<button class="btn btn-secondary mini opt" title="Subtitle + advanced options">⚙️</button>
 							<div class="model-opt-pop">
+								<div class="model-opt-title">Model details & advanced options</div>
+								<div class="model-opt-help">Set a short subtitle for the model picker. JSON is merged into the final request body for this model only.</div>
+								<label class="model-opt-label">Subtitle (optional)</label>
+								<input class="form-input sub" value="${(m.subtitle || '').replace(/"/g,'&quot;')}" placeholder="e.g. Fast • Good for MCQ">
+								<label class="model-opt-label">Extra request options (JSON)</label>
 								<textarea class="model-opt-editor">${JSON.stringify(m.options || {}, null, 2)}</textarea>
 								<div class="model-opt-status">JSON: valid</div>
 							</div>
@@ -254,6 +260,7 @@
 							enabled: row.querySelector('.en').checked,
 							name: row.querySelector('.mn').value.trim(),
 							displayName: row.querySelector('.dn').value.trim(),
+							subtitle: row.querySelector('.sub').value.trim(),
 							providerId: row.querySelector('.pv').value,
 							reasoning: row.querySelector('.rs').checked,
 							imageInput: row.querySelector('.im').checked,
@@ -277,7 +284,7 @@
 						const pick = catalog.find(x => x.id === row.querySelector('.mn').value.trim());
 						if (pick) { row.querySelector('.dn').value = pick.display; sync(); }
 					};
-					row.querySelectorAll('.en,.dn,.rs,.im,.model-opt-editor').forEach(el => el.oninput = sync);
+					row.querySelectorAll('.en,.dn,.rs,.im,.sub,.model-opt-editor').forEach(el => el.oninput = sync);
 					row.querySelector('.opt').onclick = e => { e.preventDefault(); row.querySelector('.model-opt-wrap').classList.toggle('open'); };
 					row.querySelector('.del').onclick = e => { e.preventDefault(); this.state.models.splice(i, 1); this.renderModels(); };
 
@@ -297,7 +304,7 @@
 				});
 			}
 			addCustomProvider(){ const pid = `custom-${rid().slice(0,8)}`; this.state.providers[pid] = { id: pid, custom:true, name:'Custom', endpoint:'https://api.openai.com/v1', page:'', apiKey:'', enabled:false, headers:{} }; this.expandedProvider = pid; this.renderProviderList(); this.renderModels(); }
-			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:true, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
+			addModel(providerId){ this.state.models.push({ id:rid(), name:'', displayName:'', subtitle:'', providerId: providerId || this.expandedProvider || Object.keys(this.state.providers)[0] || 'openai', enabled:true, color:'', options:{}, reasoning:true, imageInput:false }); this.renderModels(); $('.model-row:last-child > .pv').dispatchEvent(new Event('input', { bubbles: true })); }
 			saveAIConfig(){
 				this.GM.setValue('providers', this.state.providers);
 				this.GM.setValue('models', this.state.models.filter(m => m.name && m.providerId));

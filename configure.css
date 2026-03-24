@@ -94,8 +94,11 @@
 .cap-stack { display:flex; flex-direction:column; gap:2px }
 .tiny-check { display:inline-flex; align-items:center; gap:.3rem; font-size:.74rem; opacity:.9 }
 .model-opt-wrap { position:relative }
-.model-opt-pop { position:absolute; right:0; top:calc(100% + 4px); width:330px; display:none; z-index:20; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:.45rem; box-shadow:var(--shadow) }
-.model-opt-wrap.open .model-opt-pop { display:block }
+.model-opt-pop { position:absolute; right:0; top:calc(100% + 4px); width:440px; z-index:20; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:.55rem; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:.45rem; opacity:0; visibility:hidden; pointer-events:none; transform:translateY(-6px) scale(.98); transition:opacity .2s ease, transform .2s ease, visibility .2s ease }
+.model-opt-wrap.open .model-opt-pop { opacity:1; visibility:visible; pointer-events:auto; transform:translateY(0) scale(1) }
+.model-opt-title { font-weight:700; font-size:.86rem }
+.model-opt-help { font-size:.74rem; line-height:1.35; color:var(--text-light) }
+.model-opt-label { font-size:.75rem; font-weight:650; color:var(--text) }
 .model-opt-editor { width:100%; min-height:150px; resize:vertical; border:1px solid var(--border); border-radius:8px; padding:.5rem; background:var(--fill); color:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem }
 .model-opt-status { margin-top:.3rem; font-size:.75rem; opacity:.75 }
 .model-opt-status.invalid { color:var(--error); opacity:1 }
@@ -115,4 +118,6 @@
 .preferences-grid { grid-template-columns:1fr }
 .grid { grid-template-columns:1fr }
 .span-2 { grid-column:auto } }
+
+@media (max-width:720px) { .model-opt-pop { width:min(92vw, 440px) } }
 
