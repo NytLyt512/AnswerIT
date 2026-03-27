@@ -775,7 +775,7 @@ const AIState = {
 		if (!model) throw new Error(`Model ${modelName} not found`);
 
 		const modelState = this.getModel(questionId, modelName);
-		const effort = config.aiSettings.reasoningEffort || 'none';
+		const effort = model.reasoning ? config.aiSettings.reasoningEffort : null;
 		this.getQuestion(questionId).lastUsedModel = modelName; // Set last used model to current
 
 		// Check cache unless force retry
@@ -796,7 +796,7 @@ const AIState = {
 			startTime: Date.now(),
 			answer: "",
 			reasoning: "",
-			metadata: `Generating with ${modelName}:${effort}...`,
+			metadata: `Generating with ${modelName}${effort !== null ? `:${effort}` : ''}...`,
 			reasoningStartAt: null,
 			reasoningEndAt: null,
 			effort: effort,
@@ -815,7 +815,7 @@ const AIState = {
 			const completedGen = {
 				answer: out.answer,
 				reasoning: out.reasoning || '',
-				metadata: `Streamed (${timeTaken} ms): ${modelName}:${effort}`,
+				metadata: `Streamed (${timeTaken} ms): ${modelName}${effort !== null ? `:${effort}` : ''}`,
 				timeTaken,
 				reasoningStartAt: modelCtx.reasoningStartAt,
 				reasoningEndAt: modelCtx.reasoningStartAt ? Date.now() : null,
@@ -839,7 +839,7 @@ const AIState = {
 			this.updateModel(questionId, modelName, {
 				status: 'error',
 				answer: `Error: ${error.message}`,
-				metadata: `Error with ${modelName}:${effort}`,
+				metadata: `Error with ${modelName}${effort !== null ? `:${effort}` : ''}`,
 				startTime: null,
 				effort: effort,
 			});
@@ -1330,11 +1330,17 @@ function createPopupUI() {
 				const pop = document.createElement('div');
 				pop.className = 'ait-shortcut-popover';
 				pop.innerHTML = rest.map(r => `<button data-model="${r.name}" title="${[r.providerLabel, r.subtitle].filter(Boolean).join('\n')}">${r.displayName} <span>${r.subtitle || r.providerLabel}</span></button>`).join('');
-				let hideTimer = null;
+				let hideTimer = null, overBottom = false;
 				const openPop = () => { if (hideTimer) clearTimeout(hideTimer); wrap.classList.add('open'); };
 				const closePop = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(() => wrap.classList.remove('open'), 180); };
-				btn.addEventListener('mouseenter', openPop);
-				btn.addEventListener('mouseleave', closePop);
+				const inBottom = e => {	// Only trigger when pointer is in bottom 30% of the button
+					const r = btn.getBoundingClientRect();
+					const y = (e.clientY ?? 0) - r.top, x = (e.clientX ?? 0) - r.left;
+					return y >= r.height * 0.8 && x >= r.width * 0.7;	 // bottom right corner area
+				};
+				btn.addEventListener('mouseenter', e => { if (inBottom(e)) { overBottom = true; openPop(); } });
+				btn.addEventListener('mousemove', e => { const hit = inBottom(e); if (hit && !overBottom) { overBottom = true; openPop(); } if (!hit && overBottom) { overBottom = false; closePop(); } });
+				btn.addEventListener('mouseleave', () => { overBottom = false; closePop(); });
 				pop.addEventListener('mouseenter', openPop);
 				pop.addEventListener('mouseleave', closePop);
 				pop.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
@@ -1770,10 +1776,9 @@ GM_addStyle(`
 	.ait-model-status-icon:hover .ait-model-retry-icon { display: inline; }
 	/* .ait-model-button.success { border-color: var(--success-color); background: linear-gradient(135deg, var(--bg-main) 0%, rgba(76, 175, 80, 0.1) 100%); } */
 	.ait-model-button.error { border-color: #f443363a; background: linear-gradient(135deg, var(--bg-main) 0%, rgba(244, 67, 54, 0.1) 100%); }
-	.ait-shortcut-corner { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
+	.ait-shortcut-corner { position: absolute; right: 8px; bottom: 1px; font-size: 10px; opacity: .55; pointer-events: none; }
 	.ait-shortcut-popover { position: absolute; right: 0; top: calc(100% + 1px); z-index: 10030; width: 230px; max-height: 190px; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; gap: 4px; background: color-mix(in srgb, var(--bg-main) 92%, #6f88ff 8%); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; box-shadow: var(--shadow-popup); contain: content; }
 	.ait-model-wrap.shortcut.open .ait-shortcut-popover,
-	.ait-model-wrap.shortcut:hover .ait-shortcut-popover,
 	.ait-model-wrap.shortcut:focus-within .ait-shortcut-popover,
 	.ait-shortcut-popover:hover { display: flex; }
 	.ait-shortcut-popover > button { border: 0; background: transparent; color: var(--color-text); text-align: left; padding: 5px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; line-height: 1.2; }
