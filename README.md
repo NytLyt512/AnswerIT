@@ -1,61 +1,84 @@
 # AnswerIT - Universal Tab Switch Detection Bypass & AI Answer Generator
 
-This userscript enhances learning platforms by disabling tab switch detection and providing a multi-provider AI answer generator. It lets you navigate away from assessment tabs without triggering warnings and offers a modern, intuitive interface to generate answers using Gemini, OpenAI, or Anthropic models.
+AnswerIT is a userscript that combines tab-switch detection bypass techniques with a configurable multi-provider AI helper. It lets you navigate away from assessment tabs without triggering warnings and offers a modern, intuitive interface to generate answers using any AI provider of your choice.
 
 ## ✨ Features
 
 ### 🚫 Tab Switch Detection Bypass
 - Neutralizes browser visibility APIs and blocks events (e.g., "blur", "visibilitychange") so you can safely switch tabs during assessments.
 
-### 🤖 Multi-Provider AI Answer Generator
-- **Multiple AI Providers**: Use Google Gemini (free), OpenAI (GPT-4o), or Anthropic (Claude) models
-- **Real-time Streaming**: See answers generate live (see note below for Tampermonkey)
-- **Smart Caching**: Answers are cached for instant reuse
-- **Graceful Error Handling**: Handles API/network issues with clear feedback
-- **Auto-Run Mode**: Optionally generate answers automatically when questions change
+### 🤖 Multi-Provider AI-Answer Generator
+- Supports multiple OpenAI-compatible providers.
+- Streaming responses (see Tampermonkey note below).
+- Per-model settings (`reasoning`, `image input`, extra JSON options).
+- Caching + regeneration history.
+- Optional auto-run on question change.
 
-### 🎛️ Modern Interface
-- **Popup UI**: Responsive, themeable popup with drag, resize, and snap
-- **Step-by-Step Setup**: Tabbed configuration for each provider, instant API key testing
-- **Direct Insertion**: Insert answers into input fields with one click
-- **Custom Prompts**: Add your own instructions for the AI
-
-### 🔧 Easy Setup & Configuration
-- **Tabbed Setup Page**: Configure Gemini, OpenAI, or Anthropic keys in a single place
-- **Visual API Testing**: Test each key with instant feedback
-- **Persistent Settings**: Preferences and keys are saved locally
+### 🎛️ UI & Setup
+- Popup UI with drag, resize, snap, theme toggle, output mode toggle.
+- Dedicated config page for providers, models, preferences, and supported sites.
+- Provider and model chip bars for quick add flows.
+- API key test button per provider.
 
 ## 🌐 Supported Platforms
 
-Works seamlessly with popular learning and assessment platforms. The configuration page displays all supported sites with their favicons.
+The script includes platform selectors for multiple learning/assessment websites. The configure page also shows detected supported sites.
 
 ## 📥 Installation
 
-1. **Install a Userscript Manager**
-   - [Violentmonkey](https://violentmonkey.github.io/get-it/) (Recommended)
-   - [Tampermonkey](https://www.tampermonkey.net/) (Popular, but see note below)
-2. **Install AnswerIT**
-   - [Install Script](https://github.com/NytLyt512/raw/refs/heads/main/AnswerIT.user.js)
-3. **Configure Your Settings**
-   - You'll be guided through the setup page to enter your API keys and preferences.
-        - [Configuration Page](https://NytLyt512.github.io/AnswerIT/configure.html)
+1. **Install a userscript manager**
+   - [Violentmonkey](https://violentmonkey.github.io/get-it/) (recommended)
+   - [Tampermonkey](https://www.tampermonkey.net/)
+
+2. **Install the script**
+   - [Install AnswerIT.user.js](https://github.com/NytLyt512/AnswerIT/raw/refs/heads/main/AnswerIT.user.js)
+
+3. **Open configure page** (*first time setup is mandatory*)
+   - [Configuration Page](https://NytLyt512.github.io/AnswerIT/configure.html)
 
 > **Note:**
-> - **Tampermonkey Bug:** Due to a known bug in Tampermonkey on Chromium browsers, model responses will not stream in real-time (you'll only see the final answer after generation). For full streaming support, use **Violentmonkey**.
+> - ~~**Tampermonkey Bug:** Due to a known bug in Tampermonkey on Chromium browsers, model responses will not stream in real-time (you'll only see the final answer after generation). For full streaming support, use **Violentmonkey**.~~
+> - As of v5+, this issues is presumably fixed, but its all only a workaround (*figuring it out was a pain*) and until a proper fix is out, **Violentmonkey is still the recommended userscript manager**
 
 ## ⚙️ Configuration
 
-### 🔑 API Key Setup
-- **Gemini (Free):** [Get Key](https://aistudio.google.com/app/apikey)
-- **OpenAI (Paid):** [Get Key](https://platform.openai.com/api-keys)
-- **Anthropic (Paid):** [Get Key](https://console.anthropic.com/account/keys)
+### 🔑 Providers
 
-Enter your keys in the tabbed setup page. Each provider can be tested and saved individually. All settings are stored locally in your browser.
+Built-in presets currently include:
+
+- Gemini *(free)*
+- Groq *(free)*
+- OpenRouter *(free)*
+- Nvidia NIM *(free)*
+- OpenAI *(paid)*
+- Anthropic *(paid)*
+- Azure OpenAI *(paid)*
+- Ollama *(free?)*
+- Z.AI *(free)*
+- Kilo *(free)*
+
+You can also add custom providers.
+
+(btw, *free* doesn't mean 100% free... obviously there are limits 😮‍💨)
+
+### 🧠 Models
+
+- Add models per provider.
+- Reorder by drag handle.
+- Configure:
+  - display name
+  - description
+  - reasoning toggle
+  - image-input toggle
+  - advanced request JSON options
 
 ### 🎨 Preferences
-- **Hotkey**: Default is `Alt + A` (Windows/Linux) or `Cmd + A` (Mac)
-- **Theme**: Light, dark, or auto
-- **Editable Output**: Optionally edit AI output before inserting
+
+- **Hotkey**: default `Alt + A`
+- **Popup theme**: `light` or `dark`
+- **Default output view**: `raw` or `markdown`
+- **Models to show**: first `4` or `8` (last visible slot is flexible)
+- **Editable output** (raw mode)
 
 ## 🚀 How It Works
 
@@ -68,14 +91,17 @@ Enter your keys in the tabbed setup page. Each provider can be tested and saved 
 ## 🛠️ Troubleshooting
 
 - **API Key Issues**: Double-check for typos, extra spaces, or expired keys
-- **Streaming Not Working**: Use Violentmonkey for real-time streaming (see note above)
-- **UI Not Appearing**: Refresh the page, check supported sites, or ensure your userscript manager is enabled
-- **Other Issues**: [Report on GitHub](https://github.com/NytLyt512/issues/new?title=)
+- **Provider test fails**: verify endpoint + key + model access.
+- **No model buttons shown**: ensure at least one provider is enabled and at least one model is enabled.
+- **Streaming seems delayed**: prefer Violentmonkey.
+- **UI missing**: refresh page and verify script is enabled.
+- **Report issues**: [GitHub Issues](https://github.com/NytLyt512/AnswerIT/issues/new?title=)
 
 ## 🛡️ Privacy & Security
-- **Local Storage**: All keys and settings are stored only in your browser
-- **No Data Collection**: No personal data is sent to any server
-- **Open Source**: Review the code on GitHub
+
+- Keys/settings are stored locally via userscript storage.
+- The project does not run a hosted backend for your prompts/answers.
+- You can inspect source code directly on GitHub.
 
 ## 📄 License
 
@@ -83,7 +109,7 @@ This project is released under the [MIT License](https://opensource.org/licenses
 
 ## ⚠️ Disclaimer
 
-This script is provided for **educational and research purposes only**. It serves as a proof-of-concept to illustrate browser automation techniques and AI integration patterns. 
+This project is provided for **educational and research purposes only**. It serves as a proof-of-concept to illustrate browser automation techniques and AI integration patterns. 
 
 **Important Notes:**
 - Understanding these techniques helps developers build more robust security measures
