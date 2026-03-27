@@ -22,6 +22,7 @@
 // @grant        GM_deleteValue
 // @grant        GM_addStyle
 // @grant        GM.xmlHttpRequest
+// @connect	  	 *
 // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.2.1
 // @supportURL   https://github.com/NytLyt512/AnswerIT/issues
 // @updateURL    https://github.com/NytLyt512/AnswerIT/raw/refs/heads/main/AnswerIT.user.js
@@ -480,42 +481,41 @@ const AIProviders = {
 	_BaseProvider: {
 		async streamResponse(url, headers, payload, onProgress) {
 			return new Promise((resolve, reject) => {
-				let answer = '', reasoning = '', processed = 0, inThoughtTag = false;
-				const pickReasoning = d => d?.reasoning || d?.reasoning_content || d?.reasoningText || d?.reasoning?.text || d?.thinking || '';
-				const splitThoughtMarkup = (text = '') => {
-					let i = 0;
-					while (i < text.length) {
-						if (text.startsWith('<thought>', i)) { inThoughtTag = true; i += 9; continue; }
-						if (text.startsWith('<think>', i)) { inThoughtTag = true; i += 7; continue; }
-						if (text.startsWith('</thought>', i)) { inThoughtTag = false; i += 10; continue; }
-						if (text.startsWith('</think>', i)) { inThoughtTag = false; i += 8; continue; }
-						const ch = text[i++];
-						if (inThoughtTag) reasoning += ch; else answer += ch;
-					}
-				};
-				GM.xmlHttpRequest({
-					method: 'POST', url, headers, data: JSON.stringify(payload),
-					onprogress: r => {
-						if (!r.responseText || r.responseText.length <= processed) return;
-						r.responseText.slice(processed).split('\n').forEach(line => {
-							if (!line.startsWith('data: ')) return;
-							if (line.includes('[DONE]')) return resolve({ answer, reasoning });
-							try {
-								const json = JSON.parse(line.slice(6));
-								const d = json?.choices?.[0]?.delta || {};
-								const txt = d.content || d.text || '';
-								const isGoogleThought = !!d?.extra_content?.google?.thought;
-								const rs = pickReasoning(d) || (Array.isArray(d.reasoning_details) ? d.reasoning_details.map(x => x?.text || '').join('\n') : '');
-								if (txt && isGoogleThought) reasoning += txt;
-								else if (txt) splitThoughtMarkup(txt);
-								if (rs) reasoning += rs;
-								if (txt || rs) onProgress({ answer, reasoning });
-							} catch { }
+				let answer = '', reasoning = '', other = '', buffer = '', processed = 0, inThought = false, decoder = new TextDecoder();
+				const handleLine = line => {
+					if (!line) return;
+					if (!line.startsWith('data:')) { other += line + '\n'; return; }
+					const stripped = line.replace(/^data:\s*/, '');
+					if (stripped === '[DONE]') return resolve({ answer, reasoning });	// Immmediately resolve on [DONE] to prevent waiting for the next chunk
+					try {
+						const d = JSON.parse(stripped).choices?.[0]?.delta || {};
+						const txt = d.content || d.text || '';
+						// extract reasoning from delta if available
+						reasoning += d.reasoning || d.reasoning_content || d.thinking || ((d.reasoning_details || []).map(x => x.text).join('') || '');
+						// handle custom thought tags in the content if available to separate reasoning from answer
+						txt.split(/(<[\/]?(?:thought|think)>)/).forEach(part => {
+							if (/^<thought|^<think/.test(part)) { inThought = true; return; }
+							if (/^<\/thought|^<\/think/.test(part)) { inThought = false; return; }
+							inThought ? reasoning += part : answer += part;
 						});
-						processed = r.responseText.length;
-					},
-					onload: r => r.status >= 200 && r.status < 300 ? resolve({ answer, reasoning }) : reject(new Error(`API error ${r.status}: ${r.responseText || r.statusText}`)),
-					onerror: r => reject(new Error(`Network/API error ${r.status || ''} ${r.statusText || ''}`.trim()))
+						if (txt || reasoning) onProgress({ answer, reasoning });
+					} catch (e) { console.warn('Failed to parse line', e, stripped); other += stripped + '\n'; }
+				};
+				const processChunk = chunk => {
+					if (!chunk) return;
+					buffer += chunk.replace(/\r/g, '');
+					const parts = buffer.split('\n');
+					buffer = parts.pop() || '';
+					for (const ln of parts) handleLine(ln);
+				};
+				const flush = () => { if (buffer) { buffer.split('\n').forEach(handleLine); buffer = ''; } };
+				const supportsStream = !!GM.xmlHttpRequest?.RESPONSE_TYPE_STREAM;// Workaround for Tampermonkey which has a buggy implementation of onprogress (undefined r.responseText)
+				return GM.xmlHttpRequest({
+					method: 'POST', url, headers, data: JSON.stringify(payload), responseType: supportsStream ? 'stream' : undefined,
+					onload: r => { try { flush(); } catch { }; r.status >= 200 && r.status < 300 ? resolve({ answer, reasoning }) : reject(new Error(`\nAPI error ${r.status}:\n${other}\n${r.responseText || r.statusText}`)); },
+					onerror: r => reject(new Error(`\nNetwork/API error ${r.status}:\n${other}\n${r.statusText}`.trim())),
+					onloadstart: async r => { if (supportsStream) for await (const value of readableStreamAsyncIterator(r.response?.getReader?.())) processChunk(decoder.decode(value, { stream: true })) },
+					onprogress: r => { const rt = r.responseText; if (!rt || rt.length <= processed) return; processChunk(rt.slice(processed)); processed = rt.length; },	// Workaround for Violentmonkey repeating chunks in onprogress
 				});
 			});
 		}
@@ -1447,6 +1447,20 @@ function hashCode(str) {
 		hval &= 0x1fffffffffffffn; // 53 bits
 	}
 	return hval.toString(16);
+}
+
+// Convert a ReadableStreamDefaultReader to an async iterator
+async function* readableStreamAsyncIterator(reader) {
+	if (!reader) return;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) return;
+			yield value;
+		}
+	} finally {
+		reader.releaseLock();
+	}
 }
 
 const openSetupPage = () => window.open("https://NytLyt512.github.io/AnswerIT/configure.html", "_blank");
