@@ -114,7 +114,7 @@ const config = {
 	aiSettings: Object.assign({ reasoningEffort: 'none' }, GM_getValue('aiSettings', {})),
 
 	/** @type {'raw'|'markdown'} */
-	outputMode: GM_getValue('outputMode', 'raw'),
+	outputMode: GM_getValue('outputMode', 'markdown'), // 'markdown' or 'raw' (for textarea)
 
 	/** @type {{ key: string, modifier: string }} */
 	hotkey: GM_getValue("hotkey", { key: "a", modifier: "alt" }), // Default hotkey is 'a' (used with Alt)

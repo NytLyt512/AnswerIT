@@ -26,8 +26,8 @@
 					<li>Drag rows to reorder priority.</li>
 				</ol>
 				<div class="quick-links">
-					<a href="https://github.com/NytLyt512/tree/main/AnswerIT" target="_blank" class="quick-link">📖 GitHub</a>
-					<a href="https://github.com/NytLyt512/issues/new" target="_blank" class="quick-link">🐛 Report issue</a>
+					<a href="https://github.com/NytLyt512/AnswerIt" target="_blank" class="quick-link">📖 GitHub</a>
+					<a href="https://github.com/NytLyt512/AnswerIt/issues/new" target="_blank" class="quick-link">🐛 Report issue</a>
 				</div>
 				<button class="btn btn-primary" style="margin-block: 8px;" id="installScript">⬇️ Install / Reinstall Userscript</button>
 			</section>
@@ -165,7 +165,7 @@
 				const hotkey = g('hotkey', { key:'a', modifier:'alt' });
 				$('#hotkey').value = hotkey.key || 'a';
 				$('#theme').value = g('theme', 'light');
-				$('#outputMode').value = g('outputMode', 'raw');
+				$('#outputMode').value = g('outputMode', 'markdown');
 				$('#makeAIOutputEditable').checked = !!g('makeAIOutputEditable', false);
 				$('#modelCount').value = g('modelCount', '4');
 			}
