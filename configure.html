@@ -94,12 +94,13 @@
 			{ id:'gemini', name:'Gemini', endpoint:'https://generativelanguage.googleapis.com/v1beta/openai', page:'https://aistudio.google.com/app/apikey' },
 			{ id:'groq', name:'Groq', endpoint:'https://api.groq.com/openai/v1', page:'https://console.groq.com/keys' },
 			{ id:'openrouter', name:'OpenRouter', endpoint:'https://openrouter.ai/api/v1', page:'https://openrouter.ai/keys' },
-			{ id:'nvidia', name:'NVIDIA NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/settings/api-keys' },
+			{ id:'nvidia', name:'Nvidia NIM', endpoint:'https://integrate.api.nvidia.com/v1', page:'https://build.nvidia.com/settings/api-keys' },
 			{ id:'openai', name:'OpenAI', endpoint:'https://api.openai.com/v1', page:'https://platform.openai.com/api-keys' },
             { id:'anthropic', name:'Anthropic', endpoint:'https://api.anthropic.com/v1', page:'https://console.anthropic.com/account/api-keys' },
             { id:'azure', name:'Azure OpenAI', endpoint:'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME', page:'https://portal.azure.com/#view/Microsoft_Azure_OpenAI/OpenAIResourcesMenuBlade/~/overview' },
             { id:'ollama', name:'Ollama', endpoint:'http://localhost:11434/v1', page:'https://ollama.com/download' },
             { id:'z.ai', name:'Z.AI', endpoint:'https://api.z.ai/api/paas/v4', page:'https://z.ai/manage-apikey/apikey-list' },
+			{ id:'kilo', name:'Kilo', endpoint:'https://api.kilo.ai/api/gateway', page:'https://app.kilo.ai/profile' },
 		];
 		const RECOMMENDED_MODELS = {
 			gemini: [
@@ -129,6 +130,14 @@
 			'z.ai': [
 				{ name:'glm-4.7-flash', displayName:'GLM 4.7 Flash', subtitle:'Fast low-latency responses for daily use', reasoning:true, imageInput:false },
 				{ name:'glm-4.6v-flash', displayName:'GLM 4.6V Flash', subtitle:'Vision-capable flash model for image prompts', reasoning:true, imageInput:true },
+			],
+			kilo: [
+				{ name:'kilo-auto/free', displayName:'Kilo Auto (Free)', subtitle:'Free with limited capability. No credits required. Uses MiMo-V2-Pro.', reasoning:true, imageInput:false },
+				{ name:'stepfun/step-3.5-flash:free', displayName:'Step 3.5 Flash (Free)', subtitle:'Step 3.5 Flash is StepFun\'s most capable open-source foundation model. Built on a sparse Mixture of Experts (MoE) architecture, it selectively activates only 11B of its 196B parameters per token. It is a reasoning model that is incredibly speed efficient even at long contexts.', reasoning:false, imageInput:false },
+				{ name:'corethink:free', displayName:'CoreThink (Free)', subtitle:'CoreThink - AI that reasons through problems instead of guessing. Available free of charge in Kilo for a limited time.', reasoning:false, imageInput:false },
+				{ name:'minimax/minimax-m2.5:free', displayName:'MiniMax M2.5 (Free)', subtitle:"MiniMax-M2.5 is a SOTA large language model designed for real-world productivity. Trained in a diverse range of complex real-world digital working environments, M2.5 builds upon the coding expertise of M2.1 to extend into general office work, reaching fluency in generating and operating Word, Excel, and Powerpoint files, context switching between diverse software environments, and working across different agent and human teams. Scoring 80.2% on SWE-Bench Verified, 51.3% on Multi-SWE-Bench, and 76.3% on BrowseComp, M2.5 is also more token efficient than previous generations, having been trained to optimize its actions and output through planning.", reasoning:true, imageInput:false },
+				{ name:'xiaomi/mimo-v2-omni:free', displayName:'MiMo-V2-Omni (Free)', subtitle:"MiMo-V2-Omni is a frontier omni-modal model that natively processes image, video, and audio inputs within a unified architecture. It combines strong multimodal perception with agentic capability — visual grounding, multi-step planning, tool use, and code execution — making it well-suited for complex real-world tasks that span modalities. 256K context window.", reasoning:true, imageInput:true },
+				{ name:'x-ai/grok-code-fast-1:optimized:free', displayName:'Grok Code Fast 1 (Optimized) (Free)', subtitle:"An optimized variant of Grok Code Fast 1, provided free of charge for a limited time. **Note:** All prompts and completions for this model are logged by the provider and may be used to improve their services.", reasoning:true, imageInput:false },
 			],
 		};
 		const status = (el, msg, type='info') => { el.textContent = msg; el.className = `status ${type}`; el.style.cssText += 'display: flex; transition: all 1.7s allow-discrete;'; if (type === 'success') setTimeout(() => el.style.display = 'none', 3000); };
@@ -271,12 +280,44 @@
 				if (this.modelCatalog[providerId]) return this.modelCatalog[providerId];
 				const p = this.state.providers[providerId];
 				if (!p?.endpoint || !p?.apiKey) return [];
-				const r = await this.GM.fetch(`${p.endpoint.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` } });
-				if (!r.ok) throw new Error(`/models failed (${r.status})`);
-				const body = await r.json();
-				const arr = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
-				this.modelCatalog[providerId] = arr.map(m => ({ id: (m.id || m.name || '').trim(), display: (m.display_name || m.name || m.id || '').trim() })).filter(m => m.id);
-				return this.modelCatalog[providerId];
+				const url = `${p.endpoint.replace(/\/$/, '')}/models`;
+				let res, body;
+				try { res = await this.GM.fetch(url, { headers: { Authorization: `Bearer ${p.apiKey}` } }); body = await res.json(); } catch (e) { throw new Error(e?.message || e); }
+				const arr = Array.isArray(body) ? body : body?.data || body?.models || body?.results || Object.values(body || {}).find(v=>Array.isArray(v)) || [];
+				if (!res.ok && !arr.length) throw new Error(`/models failed (${res.status})`);
+				const g = (it,...ks)=> ks.reduce((a,k)=> a ?? it?.[k], null);
+				const normalized = arr.map(it=>{
+					if (!it) return null;
+					if (typeof it === 'string') return { id: it.trim(), display: it.trim(), raw: it };
+					const id = String(g(it,'id','name','model','modelId')||'').trim();
+					const display = String(g(it,'display_name','displayName','title','name','id')||id).trim();
+					const arch = g(it,'architecture')||{};
+					const pricing = g(it,'pricing','cost')||{};
+					const top = g(it,'top_provider','topProvider')||{};
+					const ctx = [it.context_length,it.contextLength,it.context,it.context_window,it.max_context,arch.context_length,top.context_length].find(v=>v!=null);
+					const supported_parameters = g(it,'supported_parameters','supportedParameters','parameters') || [];
+					const default_parameters = g(it,'default_parameters','defaultParameters','default') || {};
+					const isFree = !!(it.isFree || it.free || (pricing && Object.values(pricing).length && Object.values(pricing).every(v => v === 0 || v === '0')));
+					return {
+						id, display,
+						description: String(g(it,'description','desc','summary')||''),
+						context_length: ctx || (arch.context_length || top.context_length) || null,
+						max_output_tokens: g(it,'max_output_tokens','maxOutputTokens') || null,
+						input_modalities: arch.input_modalities || it.input_modalities || [],
+						output_modalities: arch.output_modalities || it.output_modalities || [],
+						top_provider: top,
+						pricing,
+						supported_parameters,
+						default_parameters,
+						isFree,
+						opencode: g(it,'opencode','ai_sdk_provider') || null,
+						reasoning: supported_parameters.some(p => ['reasoning','chain_of_thought','cot','include_reasoning'].includes(p.toLowerCase())) || true,	// default to true as it's a core feature for model picking, and users can always disable it for each model
+						imageInput: (arch.input_modalities || it.input_modalities || []).includes('image') || supported_parameters.some(p => ['image_input','include_image_input','vision','multimodal'].includes(p.toLowerCase())),
+						raw: it,
+					};
+				}).filter(x=>x && x.id);
+				this.modelCatalog[providerId] = normalized;
+				return normalized;
 			}
 
 			renderModels(){
@@ -351,8 +392,15 @@
 						sync();
 						const providerId = row.querySelector('.pv').value;
 						const catalog = this.modelCatalog[providerId] || [];
-						const pick = catalog.find(x => x.id === row.querySelector('.mn').value.trim());
-						if (pick) { row.querySelector('.dn').value = pick.display; sync(); }
+						const val = row.querySelector('.mn').value.trim();
+						const pick = catalog.find(x => x.id === val || x.display === val);
+						if (pick) {
+							row.querySelector('.dn').value = pick.display || '';
+							row.querySelector('.sub').value = pick.description || pick.subtitle || '';
+							row.querySelector('.rs').checked = !!pick.reasoning;
+							row.querySelector('.im').checked = !!pick.imageInput;
+							sync();
+						}
 					};
 					row.querySelectorAll('.en,.dn,.rs,.im,.sub,.model-opt-editor').forEach(el => el.oninput = sync);
 					const optWrap = row.querySelector('.model-opt-wrap');
